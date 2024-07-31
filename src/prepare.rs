@@ -407,6 +407,7 @@ fn init_rigid_bodies(
             AccumulatedTranslation(Vector::ZERO),
             *lin_vel.unwrap_or(&LinearVelocity::default()),
             *ang_vel.unwrap_or(&AngularVelocity::default()),
+            IntermediateAngularVelocity::default(),
             PreSolveLinearVelocity::default(),
             PreSolveAngularVelocity::default(),
             *force.unwrap_or(&ExternalForce::default()),

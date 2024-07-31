@@ -35,6 +35,7 @@ use super::*;
 pub fn integrate_velocity(
     lin_vel: &mut Vector,
     ang_vel: &mut AngularValue,
+    intermediate_ang_vel: &mut AngularValue,
     force: Vector,
     torque: TorqueValue,
     inv_mass: Scalar,
@@ -59,32 +60,22 @@ pub fn integrate_velocity(
     // Compute angular acceleration.
     let ang_acc = angular_acceleration(torque, inv_inertia.rotated(&rotation).0, locked_axes);
 
-    // Compute angular velocity delta.
-    // Δω = α * Δt
-    #[allow(unused_mut)]
-    let mut delta_ang_vel = ang_acc * delta_seconds;
+    *intermediate_ang_vel = *ang_vel + ang_acc * delta_seconds / 2.0;
 
     #[cfg(feature = "3d")]
     {
-        // In 3D, we should also handle gyroscopic motion, which accounts for
-        // non-spherical shapes that may wobble as they spin in the air.
-        //
-        // Gyroscopic motion happens when the inertia tensor is not uniform, causing
-        // the angular momentum to point in a different direction than the angular velocity.
-        //
-        // The gyroscopic torque is τ = ω x Iω.
-        //
-        // However, the basic semi-implicit approach can blow up, as semi-implicit Euler
-        // extrapolates velocity and the gyroscopic torque is quadratic in the angular velocity.
-        // Thus, we use implicit Euler, which is much more accurate and stable, although slightly more expensive.
-        let effective_inertia = locked_axes.apply_to_rotation(inv_inertia.inverse().0);
-        delta_ang_vel += solve_gyroscopic_torque(
-            *ang_vel,
-            rotation.0,
-            Inertia(effective_inertia),
-            delta_seconds,
-        );
+        let inv_inertia_global = inv_inertia.rotated(&rotation);
+        let inertia_global = inv_inertia_global.inverse();
+
+        let ang_mom = inertia_global.0 * *ang_vel;
+        let gyro_torque = -ang_vel.cross(ang_mom);
+        let gyro_ang_acc = inv_inertia_global.0 * gyro_torque;
+        let total_ang_acc = ang_acc + gyro_ang_acc;
+        *intermediate_ang_vel += delta_seconds / 2.0
+            * (gyro_ang_acc + delta_seconds / 6.0 * total_ang_acc.cross(*ang_vel))
     }
+
+    let delta_ang_vel = ang_acc * delta_seconds;
 
     if delta_ang_vel != AngularVelocity::ZERO.0 && delta_ang_vel.is_finite() {
         *ang_vel += delta_ang_vel;
@@ -99,10 +90,13 @@ pub fn integrate_position(
     pos: &mut Vector,
     rot: &mut Rotation,
     lin_vel: Vector,
-    ang_vel: AngularValue,
+    ang_vel: &mut AngularValue,
+    intermediate_ang_vel: &AngularValue,
+    inertia: impl Into<Inertia>,
     locked_axes: LockedAxes,
     delta_seconds: Scalar,
 ) {
+    let inertia = inertia.into();
     let lin_vel = locked_axes.apply_to_vec(lin_vel);
 
     // x = x_0 + v * Δt
@@ -112,27 +106,32 @@ pub fn integrate_position(
         *pos = next_pos;
     }
 
+    let inertia_rotated = inertia.rotated(&rot);
+    let angular_momentum_before = inertia_rotated.0 * *ang_vel;
+
     // Effective inverse inertia along each rotational axis
-    let ang_vel = locked_axes.apply_to_angular_velocity(ang_vel);
+    let locked_ang_vel = locked_axes.apply_to_angular_velocity(*intermediate_ang_vel);
+
+    let delta_rot = locked_ang_vel * delta_seconds;
 
     // θ = θ_0 + ω * Δt
     #[cfg(feature = "2d")]
     {
-        let delta_rot = Rotation::radians(ang_vel * delta_seconds);
-        if delta_rot != Rotation::IDENTITY && delta_rot.is_finite() {
-            *rot *= delta_rot;
+        if delta_rot != 0.0 && delta_rot.is_finite() {
+            *rot *= Rotation::radians(delta_rot);
         }
     }
     #[cfg(feature = "3d")]
     {
-        // This is a bit more complicated because quaternions are weird.
-        // Maybe there's a simpler and more numerically stable way?
-        let delta_rot = Quaternion::from_vec4(
-            (ang_vel * delta_seconds / 2.0).extend(rot.w * delta_seconds / 2.0),
-        ) * rot.0;
-        if delta_rot.w != 0.0 && delta_rot.is_finite() {
-            rot.0 = (rot.0 + delta_rot).normalize();
+        if delta_rot.length() != 0.0 && delta_rot.is_finite() {
+            rot.0 = Quaternion::from_scaled_axis(delta_rot) * rot.0;
         }
+    }
+    // This is the *new* orientation, post rotating
+    let inv_inertia_rotated_post = inertia.rotated(&rot).inverse();
+    let new_angular_velocity = inv_inertia_rotated_post.0 * angular_momentum_before;
+    if new_angular_velocity != *ang_vel {
+        *ang_vel = new_angular_velocity
     }
 }
 
@@ -243,11 +242,20 @@ mod tests {
         #[cfg(feature = "3d")]
         let mut angular_velocity = Vector::Z * 2.0;
 
+        #[cfg(feature = "2d")]
+        let mut intermediate_ang_vel = 0.0;
+        #[cfg(feature = "3d")]
+        let mut intermediate_ang_vel = Vector::ZERO;
+
         let inv_mass = 1.0;
         #[cfg(feature = "2d")]
         let inv_inertia = 1.0;
         #[cfg(feature = "3d")]
         let inv_inertia = Matrix3::IDENTITY;
+        #[cfg(feature = "2d")]
+        let inertia = 1.0;
+        #[cfg(feature = "3d")]
+        let inertia = Matrix3::IDENTITY;
 
         let gravity = Vector::NEG_Y * 9.81;
 
@@ -256,6 +264,7 @@ mod tests {
             integrate_velocity(
                 &mut linear_velocity,
                 &mut angular_velocity,
+                &mut intermediate_ang_vel,
                 default(),
                 default(),
                 inv_mass,
@@ -269,7 +278,9 @@ mod tests {
                 &mut position,
                 &mut rotation,
                 linear_velocity,
-                angular_velocity,
+                &mut angular_velocity,
+                &intermediate_ang_vel,
+                inertia,
                 default(),
                 1.0 / 10.0,
             );

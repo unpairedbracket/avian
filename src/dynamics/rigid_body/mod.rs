@@ -410,6 +410,22 @@ pub(crate) struct PreSolveAngularVelocity(pub Scalar);
 #[reflect(Component)]
 pub(crate) struct PreSolveAngularVelocity(pub Vector);
 
+/// The angular velocity of a [rigid body](RigidBody) in radians per second, averaged over
+/// the time step. Positive values will result in counterclockwise rotation.
+/// Determines the actual rotation the body will undergo this time step.
+#[cfg(feature = "2d")]
+#[derive(Reflect, Clone, Copy, Component, Debug, Default, PartialEq, From)]
+#[reflect(Component)]
+pub(crate) struct IntermediateAngularVelocity(pub Scalar);
+
+/// The angular velocity of a [rigid body](RigidBody) as a rotation axis
+/// multiplied by the angular speed in radians per second, averaged over the current time step.
+/// Determines the actual rotation the body will undergo this time step.
+#[cfg(feature = "3d")]
+#[derive(Reflect, Clone, Copy, Component, Debug, Default, Deref, DerefMut, PartialEq, From)]
+#[reflect(Component)]
+pub(crate) struct IntermediateAngularVelocity(pub Vector);
+
 /// Controls how [gravity](Gravity) affects a specific [rigid body](RigidBody).
 ///
 /// A gravity scale of `0.0` will disable gravity, while `2.0` will double the gravity.
