@@ -57,14 +57,15 @@ pub fn integrate_velocity(
         *lin_vel = next_lin_vel;
     }
 
+    let inv_inertia_global = inv_inertia.rotated(&rotation);
+
     // Compute angular acceleration.
-    let ang_acc = angular_acceleration(torque, inv_inertia.rotated(&rotation).0, locked_axes);
+    let ang_acc = angular_acceleration(torque, inv_inertia_global.0, locked_axes);
 
     *intermediate_ang_vel = *ang_vel + ang_acc * delta_seconds / 2.0;
 
     #[cfg(feature = "3d")]
     {
-        let inv_inertia_global = inv_inertia.rotated(&rotation);
         let inertia_global = inv_inertia_global.inverse();
 
         let ang_mom = inertia_global.0 * *ang_vel;
