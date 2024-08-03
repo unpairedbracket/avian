@@ -191,41 +191,6 @@ pub fn angular_acceleration(
     }
 }
 
-/// Computes the angular correction caused by gyroscopic motion,
-/// which may cause objects with non-uniform angular inertia to wobble
-/// while spinning.
-#[cfg(feature = "3d")]
-pub fn solve_gyroscopic_torque(
-    ang_vel: Vector,
-    rotation: Quaternion,
-    local_inertia: Inertia,
-    delta_seconds: Scalar,
-) -> Vector {
-    // Based on the "Gyroscopic Motion" section of Erin Catto's GDC 2015 slides on Numerical Methods.
-    // https://box2d.org/files/ErinCatto_NumericalMethods_GDC2015.pdf
-
-    // Convert angular velocity to body coordinates so that we can use the local angular inertia
-    let local_ang_vel = rotation.inverse() * ang_vel;
-
-    // Compute body-space angular momentum
-    let angular_momentum = local_inertia.0 * local_ang_vel;
-
-    // Compute Jacobian
-    let jacobian = local_inertia.0
-        + delta_seconds
-            * (skew_symmetric_mat3(local_ang_vel) * local_inertia.0
-                - skew_symmetric_mat3(angular_momentum));
-
-    // Residual vector
-    let f = delta_seconds * local_ang_vel.cross(angular_momentum);
-
-    // Do one Newton-Raphson iteration
-    let delta_ang_vel = -jacobian.inverse() * f;
-
-    // Convert back to world coordinates
-    rotation * delta_ang_vel
-}
-
 #[cfg(test)]
 mod tests {
     use approx::assert_relative_eq;
