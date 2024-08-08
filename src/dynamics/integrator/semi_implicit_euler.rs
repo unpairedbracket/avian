@@ -38,13 +38,14 @@ pub fn integrate_velocity(
     force: Vector,
     torque: TorqueValue,
     inv_mass: Scalar,
-    inv_inertia: impl Into<InverseInertia>,
+    inertia: impl Into<Inertia>,
+    inv_inertia: impl Into<GlobalInvInertia>,
     rotation: Rotation,
     locked_axes: LockedAxes,
     gravity: Vector,
     delta_seconds: Scalar,
 ) {
-    let inv_inertia = inv_inertia.into();
+    let global_inv_inertia = inv_inertia.into();
 
     // Compute linear acceleration.
     let lin_acc = linear_acceleration(force, inv_mass, locked_axes, gravity);
@@ -57,7 +58,7 @@ pub fn integrate_velocity(
     }
 
     // Compute angular acceleration.
-    let ang_acc = angular_acceleration(torque, inv_inertia.rotated(&rotation).0, locked_axes);
+    let ang_acc = angular_acceleration(torque, global_inv_inertia.0, locked_axes);
 
     // Compute angular velocity delta.
     // Δω = α * Δt
@@ -76,8 +77,10 @@ pub fn integrate_velocity(
         //
         // However, the basic semi-implicit approach can blow up, as semi-implicit Euler
         // extrapolates velocity and the gyroscopic torque is quadratic in the angular velocity.
-        // Thus, we use implicit Euler, which is much more accurate and stable, although slightly more expensive.
-        let effective_inertia = locked_axes.apply_to_rotation(inv_inertia.inverse().0);
+        // Thus, we use implicit Euler, which is much more accurate and stable, although slightly more expensive
+        let local_inertia = inertia.into();
+
+        let effective_inertia = locked_axes.apply_to_rotation(local_inertia.0);
         delta_ang_vel += solve_gyroscopic_torque(
             *ang_vel,
             rotation.0,
@@ -245,9 +248,13 @@ mod tests {
 
         let inv_mass = 1.0;
         #[cfg(feature = "2d")]
-        let inv_inertia = 1.0;
+        let inertia = 1.0;
         #[cfg(feature = "3d")]
-        let inv_inertia = Matrix3::IDENTITY;
+        let inertia = Matrix3::IDENTITY;
+        #[cfg(feature = "2d")]
+        let global_inv_inertia = 1.0;
+        #[cfg(feature = "3d")]
+        let global_inv_inertia = Matrix3::IDENTITY;
 
         let gravity = Vector::NEG_Y * 9.81;
 
@@ -259,7 +266,8 @@ mod tests {
                 default(),
                 default(),
                 inv_mass,
-                inv_inertia,
+                inertia,
+                global_inv_inertia,
                 rotation,
                 default(),
                 gravity,

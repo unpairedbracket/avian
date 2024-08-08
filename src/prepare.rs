@@ -447,6 +447,8 @@ fn init_mass_properties(
             *inverse_inertia
                 .unwrap_or(&inertia.map_or(InverseInertia::ZERO, |inertia| inertia.inverse())),
             *center_of_mass.unwrap_or(&CenterOfMass::default()),
+            GlobalInertia(inertia.unwrap_or(&Inertia::ZERO).0),
+            GlobalInvInertia(inverse_inertia.unwrap_or(&InverseInertia::ZERO).0),
         ));
     }
 }
@@ -457,15 +459,29 @@ pub fn update_mass_properties(
         (
             Entity,
             &RigidBody,
+            &Rotation,
             Ref<Mass>,
             &mut InverseMass,
             Ref<Inertia>,
             &mut InverseInertia,
+            &mut GlobalInertia,
+            &mut GlobalInvInertia,
         ),
         Or<(Changed<Mass>, Changed<Inertia>)>,
     >,
 ) {
-    for (entity, rb, mass, mut inv_mass, inertia, mut inv_inertia) in &mut bodies {
+    for (
+        entity,
+        rb,
+        rot,
+        mass,
+        mut inv_mass,
+        inertia,
+        mut inv_inertia,
+        mut global_inertia,
+        mut global_inv_inertia,
+    ) in &mut bodies
+    {
         let is_mass_valid = mass.is_finite() && mass.0 >= Scalar::EPSILON;
         #[cfg(feature = "2d")]
         let is_inertia_valid = inertia.is_finite() && inertia.0 >= Scalar::EPSILON;
@@ -477,6 +493,8 @@ pub fn update_mass_properties(
         }
         if inertia.is_changed() && is_inertia_valid {
             inv_inertia.0 = inertia.inverse().0;
+            global_inertia.0 = inertia.rotated(&rot).0;
+            global_inv_inertia.0 = inv_inertia.rotated(&rot).0;
         }
 
         // Warn about dynamic bodies with no mass or inertia

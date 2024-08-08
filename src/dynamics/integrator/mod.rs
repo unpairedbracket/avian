@@ -145,7 +145,8 @@ fn integrate_velocities(
             &ExternalForce,
             &ExternalTorque,
             &InverseMass,
-            &InverseInertia,
+            &Inertia,
+            &GlobalInvInertia,
             Option<&LinearDamping>,
             Option<&AngularDamping>,
             Option<&GravityScale>,
@@ -169,7 +170,8 @@ fn integrate_velocities(
             force,
             torque,
             inv_mass,
-            inv_inertia,
+            inertia,
+            global_inv_inertia,
             lin_damping,
             ang_damping,
             gravity_scale,
@@ -219,7 +221,8 @@ fn integrate_velocities(
                 external_force,
                 external_torque,
                 inv_mass.0,
-                *inv_inertia,
+                *inertia,
+                *global_inv_inertia,
                 *rot,
                 locked_axes,
                 gravity,
@@ -281,6 +284,26 @@ fn integrate_positions(
     );
 }
 
+fn update_inertia(
+    mut bodies: Query<
+        (
+            &Rotation,
+            &Inertia,
+            &InverseInertia,
+            &mut GlobalInertia,
+            &mut GlobalInvInertia,
+        ),
+        (With<RigidBody>, Changed<Rotation>),
+    >,
+) {
+    bodies.par_iter_mut().for_each(
+        |(rot, inertia, inv_inertia, mut global_inertia, mut global_inv_inertia)| {
+            global_inertia.0 = inertia.rotated(&rot).0;
+            global_inv_inertia.0 = inv_inertia.rotated(&rot).0;
+        },
+    )
+}
+
 #[cfg(feature = "2d")]
 type AngularValue = Scalar;
 #[cfg(feature = "3d")]
@@ -302,7 +325,7 @@ type ImpulseQueryComponents = (
     &'static mut AngularVelocity,
     &'static Rotation,
     &'static InverseMass,
-    &'static InverseInertia,
+    &'static GlobalInvInertia,
     Option<&'static LockedAxes>,
 );
 
@@ -315,7 +338,7 @@ fn apply_impulses(mut bodies: Query<ImpulseQueryComponents, Without<Sleeping>>) 
         mut ang_vel,
         rotation,
         inv_mass,
-        inv_inertia,
+        global_inv_inertia,
         locked_axes,
     ) in &mut bodies
     {
@@ -326,7 +349,7 @@ fn apply_impulses(mut bodies: Query<ImpulseQueryComponents, Without<Sleeping>>) 
         let locked_axes = locked_axes.map_or(LockedAxes::default(), |locked_axes| *locked_axes);
 
         let effective_inv_mass = locked_axes.apply_to_vec(Vector::splat(inv_mass.0));
-        let effective_inv_inertia = locked_axes.apply_to_rotation(inv_inertia.rotated(rotation).0);
+        let effective_inv_inertia = locked_axes.apply_to_rotation(global_inv_inertia.0);
 
         // Avoid triggering bevy's change detection unnecessarily.
         let delta_lin_vel = impulse.impulse() * effective_inv_mass;

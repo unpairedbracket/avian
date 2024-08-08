@@ -25,6 +25,7 @@ pub struct RigidBodyQuery {
     pub inverse_mass: &'static mut InverseMass,
     pub inertia: &'static mut Inertia,
     pub inverse_inertia: &'static mut InverseInertia,
+    pub global_inverse_inertia: &'static mut GlobalInvInertia,
     pub center_of_mass: &'static mut CenterOfMass,
     pub friction: &'static Friction,
     pub restitution: &'static Restitution,
@@ -70,7 +71,7 @@ impl<'w> RigidBodyQueryItem<'w> {
             return 0.0;
         }
 
-        let mut inv_inertia = self.inverse_inertia.0;
+        let mut inv_inertia = self.global_inverse_inertia.0;
 
         if let Some(locked_axes) = self.locked_axes {
             inv_inertia = locked_axes.apply_to_rotation(inv_inertia);
@@ -86,7 +87,7 @@ impl<'w> RigidBodyQueryItem<'w> {
             return Matrix3::ZERO;
         }
 
-        let mut inv_inertia = self.inverse_inertia.rotated(&self.rotation).0;
+        let mut inv_inertia = self.global_inverse_inertia.0;
 
         if let Some(locked_axes) = self.locked_axes {
             inv_inertia = locked_axes.apply_to_rotation(inv_inertia);
@@ -184,7 +185,7 @@ impl<'w> RigidBodyQueryReadOnlyItem<'w> {
             return 0.0;
         }
 
-        let mut inv_inertia = self.inverse_inertia.0;
+        let mut inv_inertia = self.global_inverse_inertia.0;
 
         if let Some(locked_axes) = self.locked_axes {
             inv_inertia = locked_axes.apply_to_rotation(inv_inertia);
@@ -200,7 +201,7 @@ impl<'w> RigidBodyQueryReadOnlyItem<'w> {
             return Matrix3::ZERO;
         }
 
-        let mut inv_inertia = self.inverse_inertia.rotated(self.rotation).0;
+        let mut inv_inertia = self.global_inverse_inertia.0;
 
         if let Some(locked_axes) = self.locked_axes {
             inv_inertia = locked_axes.apply_to_rotation(inv_inertia);
