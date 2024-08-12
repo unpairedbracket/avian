@@ -135,6 +135,7 @@ impl Plugin for SolverPlugin {
                 SubstepSolverSet::WarmStart,
                 SubstepSolverSet::SolveConstraints,
                 IntegrationSet::Position,
+                IntegrationSet::InertiaUpdate,
                 SubstepSolverSet::Relax,
                 SubstepSolverSet::SolveXpbdConstraints,
                 SubstepSolverSet::SolveUserConstraints,

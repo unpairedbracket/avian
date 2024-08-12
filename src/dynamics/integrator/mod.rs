@@ -48,7 +48,12 @@ impl Plugin for IntegratorPlugin {
 
         app.configure_sets(
             self.schedule.intern(),
-            (IntegrationSet::Velocity, IntegrationSet::Position).chain(),
+            (
+                IntegrationSet::Velocity,
+                IntegrationSet::Position,
+                IntegrationSet::InertiaUpdate,
+            )
+                .chain(),
         );
 
         app.get_schedule_mut(self.schedule.intern())
@@ -56,6 +61,7 @@ impl Plugin for IntegratorPlugin {
             .add_systems((
                 integrate_velocities.in_set(IntegrationSet::Velocity),
                 integrate_positions.in_set(IntegrationSet::Position),
+                update_inertias.in_set(IntegrationSet::InertiaUpdate),
             ));
 
         app.get_schedule_mut(PhysicsSchedule)
@@ -78,6 +84,8 @@ pub enum IntegrationSet {
     Velocity,
     /// Moves bodies based on their current velocities and the physics time step.
     Position,
+    /// Updates Inertia to match rotation
+    InertiaUpdate,
 }
 
 /// A resource for the global gravitational acceleration.
@@ -284,7 +292,7 @@ fn integrate_positions(
     );
 }
 
-fn update_inertia(
+fn update_inertias(
     mut bodies: Query<
         (
             &Rotation,
@@ -323,7 +331,6 @@ type ImpulseQueryComponents = (
     &'static mut ExternalAngularImpulse,
     &'static mut LinearVelocity,
     &'static mut AngularVelocity,
-    &'static Rotation,
     &'static InverseMass,
     &'static GlobalInvInertia,
     Option<&'static LockedAxes>,
@@ -336,7 +343,6 @@ fn apply_impulses(mut bodies: Query<ImpulseQueryComponents, Without<Sleeping>>) 
         ang_impulse,
         mut lin_vel,
         mut ang_vel,
-        rotation,
         inv_mass,
         global_inv_inertia,
         locked_axes,
