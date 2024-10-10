@@ -3,10 +3,12 @@
 //!
 //! See [`IntegratorPlugin`].
 
+pub mod angular_integrator;
 #[doc(alias = "symplectic_euler")]
 pub mod semi_implicit_euler;
 
 use crate::prelude::*;
+use angular_integrator::{AngularIntegrator, AngularMomentum};
 use bevy::{
     ecs::{intern::Interned, schedule::ScheduleLabel},
     prelude::*,
@@ -48,13 +50,19 @@ impl Plugin for IntegratorPlugin {
 
         app.configure_sets(
             self.schedule.intern(),
-            (IntegrationSet::Velocity, IntegrationSet::Position).chain(),
+            (
+                IntegrationSet::Velocity,
+                IntegrationSet::Angular,
+                IntegrationSet::Position,
+            )
+                .chain(),
         );
 
         app.get_schedule_mut(self.schedule.intern())
             .expect("add SubstepSchedule first")
             .add_systems((
                 integrate_velocities.in_set(IntegrationSet::Velocity),
+                integrate_angular.in_set(IntegrationSet::Angular),
                 integrate_positions.in_set(IntegrationSet::Position),
             ));
 
@@ -76,6 +84,8 @@ impl Plugin for IntegratorPlugin {
 pub enum IntegrationSet {
     /// Applies gravity and external forces to bodies, updating their velocities.
     Velocity,
+    /// Integrates rotational position and velocity
+    Angular,
     /// Moves bodies based on their current velocities and the physics time step.
     Position,
 }
@@ -139,15 +149,10 @@ fn integrate_velocities(
             &RigidBody,
             &Position,
             Option<&mut PreSolveAccumulatedTranslation>,
-            &Rotation,
             &mut LinearVelocity,
-            &mut AngularVelocity,
             &ExternalForce,
-            &ExternalTorque,
             &InverseMass,
-            &InverseInertia,
             Option<&LinearDamping>,
-            Option<&AngularDamping>,
             Option<&GravityScale>,
             Option<&LockedAxes>,
         ),
@@ -163,15 +168,10 @@ fn integrate_velocities(
             rb,
             pos,
             prev_pos,
-            rot,
             mut lin_vel,
-            mut ang_vel,
             force,
-            torque,
             inv_mass,
-            inv_inertia,
             lin_damping,
-            ang_damping,
             gravity_scale,
             locked_axes,
         )| {
@@ -182,9 +182,6 @@ fn integrate_velocities(
             if rb.is_static() {
                 if *lin_vel != LinearVelocity::ZERO {
                     *lin_vel = LinearVelocity::ZERO;
-                }
-                if *ang_vel != AngularVelocity::ZERO {
-                    *ang_vel = AngularVelocity::ZERO;
                 }
                 return;
             }
@@ -202,6 +199,72 @@ fn integrate_velocities(
                         lin_vel.0 *= 1.0 / (1.0 + delta_secs * lin_damping.0);
                     }
                 }
+            }
+
+            let external_force = force.force();
+            let gravity = gravity.0 * gravity_scale.map_or(1.0, |scale| scale.0);
+
+            semi_implicit_euler::integrate_velocity(
+                &mut lin_vel.0,
+                external_force,
+                inv_mass.0,
+                locked_axes,
+                gravity,
+                delta_secs,
+            );
+        },
+    );
+}
+
+#[allow(clippy::type_complexity)]
+fn integrate_angular(
+    mut bodies: Query<
+        (
+            &RigidBody,
+            &mut Rotation,
+            &mut AngularMomentum,
+            &mut AngularVelocity,
+            &ExternalForce,
+            &ExternalTorque,
+            &InverseInertia,
+            Option<&AngularIntegrator>,
+            Option<&AngularDamping>,
+            Option<&LockedAxes>,
+        ),
+        Without<Sleeping>,
+    >,
+    time: Res<Time>,
+) {
+    let delta_secs = time.delta_seconds_adjusted();
+
+    bodies.par_iter_mut().for_each(
+        |(
+            rb,
+            mut rot,
+            mut ang_mom,
+            mut ang_vel,
+            force,
+            torque,
+            inv_inertia,
+            integrator,
+            ang_damping,
+            locked_axes,
+        )| {
+            if rb.is_static() {
+                if *ang_vel != AngularVelocity::ZERO {
+                    *ang_vel = AngularVelocity::ZERO;
+                }
+                return;
+            }
+
+            if rb.is_kinematic() {
+                return;
+            }
+
+            let locked_axes = locked_axes.map_or(LockedAxes::default(), |locked_axes| *locked_axes);
+
+            // Apply damping
+            if rb.is_dynamic() {
                 if let Some(ang_damping) = ang_damping {
                     if ang_vel.0 != AngularVelocity::ZERO.0 && ang_damping.0 != 0.0 {
                         ang_vel.0 *= 1.0 / (1.0 + delta_secs * ang_damping.0);
@@ -209,20 +272,15 @@ fn integrate_velocities(
                 }
             }
 
-            let external_force = force.force();
             let external_torque = torque.torque() + force.torque();
-            let gravity = gravity.0 * gravity_scale.map_or(1.0, |scale| scale.0);
-
-            semi_implicit_euler::integrate_velocity(
-                &mut lin_vel.0,
+            let int = integrator.copied().unwrap_or(AngularIntegrator::default());
+            int.integrate(
+                &mut rot,
+                &mut ang_mom,
                 &mut ang_vel.0,
-                external_force,
                 external_torque,
-                inv_mass.0,
                 *inv_inertia,
-                *rot,
                 locked_axes,
-                gravity,
                 delta_secs,
             );
         },
@@ -237,9 +295,7 @@ fn integrate_positions(
             &Position,
             Option<&mut PreSolveAccumulatedTranslation>,
             &mut AccumulatedTranslation,
-            &mut Rotation,
             &LinearVelocity,
-            &AngularVelocity,
             Option<&LockedAxes>,
         ),
         Without<Sleeping>,
@@ -254,16 +310,14 @@ fn integrate_positions(
             pos,
             pre_solve_accumulated_translation,
             mut accumulated_translation,
-            mut rot,
             lin_vel,
-            ang_vel,
             locked_axes,
         )| {
             if let Some(mut previous_position) = pre_solve_accumulated_translation {
                 previous_position.0 = pos.0;
             }
 
-            if rb.is_static() || (lin_vel.0 == Vector::ZERO && *ang_vel == AngularVelocity::ZERO) {
+            if rb.is_static() || lin_vel.0 == Vector::ZERO {
                 return;
             }
 
@@ -271,9 +325,7 @@ fn integrate_positions(
 
             semi_implicit_euler::integrate_position(
                 &mut accumulated_translation.0,
-                &mut rot,
                 lin_vel.0,
-                ang_vel.0,
                 locked_axes,
                 delta_secs,
             );

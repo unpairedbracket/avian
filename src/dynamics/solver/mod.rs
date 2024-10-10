@@ -132,6 +132,7 @@ impl Plugin for SolverPlugin {
         substeps.configure_sets(
             (
                 IntegrationSet::Velocity,
+                IntegrationSet::Angular,
                 SubstepSolverSet::WarmStart,
                 SubstepSolverSet::SolveConstraints,
                 IntegrationSet::Position,

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/avian2d", "crates/avian3d"]
+members = ["crates/avian3d"]
 resolver = "2"
 
 [profile.dev]
