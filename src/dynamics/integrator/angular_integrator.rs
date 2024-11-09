@@ -82,6 +82,7 @@ pub enum AngularIntegrator {
     Buss,
     ImplicitMidpoint(usize, &'static str),
     NewtonImplicitMidpoint(usize, &'static str),
+    ABC,
     Custom(
         fn(
             rotation: &mut Rotation,
@@ -116,6 +117,7 @@ impl AngularIntegrator {
             AngularIntegrator::Catto => "catto",
             AngularIntegrator::ExplicitCorrected => "corrected explicit",
             AngularIntegrator::Buss => "buss",
+            AngularIntegrator::ABC => "ABC",
             AngularIntegrator::ImplicitMidpoint(_, name)
             | AngularIntegrator::NewtonImplicitMidpoint(_, name)
             | AngularIntegrator::Custom(_, name) => name,
@@ -136,6 +138,7 @@ impl AngularIntegrator {
             AngularIntegrator::Catto => integrate_catto,
             AngularIntegrator::ExplicitCorrected => integrate_explicit_correction,
             AngularIntegrator::Buss => integrate_buss,
+            AngularIntegrator::ABC => integrate_abc,
             AngularIntegrator::ImplicitMidpoint(n_steps, _) => {
                 return integrate_implicit_midpoint(
                     rotation,
@@ -501,6 +504,47 @@ pub fn integrate_newton_midpoint(
     if ang_vel_new != *ang_vel && ang_vel_new.is_finite() {
         *ang_vel = ang_vel_new;
     }
+}
+
+pub fn integrate_abc(
+    rotation: &mut Rotation,
+    ang_mom: &mut AngularMomentum,
+    ang_vel: &mut AngularValue,
+    torque: TorqueValue,
+    inv_inertia: impl Into<InverseInertia>,
+    locked_axes: LockedAxes,
+    delta_seconds: Scalar,
+) {
+    let body_inv_inertia: InverseInertia = inv_inertia.into();
+
+    ang_mom.0 += torque * delta_seconds / 2.0;
+
+    let body_am = rotation.0.inverse() * ang_mom.0;
+    let body_omega = body_inv_inertia.0 * body_am;
+    rotation.0 = rotation.0 * Quat::from_scaled_axis(Vec3::Y * body_omega.y * delta_seconds / 2.0);
+
+    let body_am = rotation.0.inverse() * ang_mom.0;
+    let body_omega = body_inv_inertia.0 * body_am;
+    rotation.0 = rotation.0 * Quat::from_scaled_axis(Vec3::X * body_omega.x * delta_seconds / 2.0);
+
+    let body_am = rotation.0.inverse() * ang_mom.0;
+    let body_omega = body_inv_inertia.0 * body_am;
+    rotation.0 = rotation.0 * Quat::from_scaled_axis(Vec3::Z * body_omega.z * delta_seconds);
+
+    let body_am = rotation.0.inverse() * ang_mom.0;
+    let body_omega = body_inv_inertia.0 * body_am;
+    rotation.0 = rotation.0 * Quat::from_scaled_axis(Vec3::X * body_omega.x * delta_seconds / 2.0);
+
+    let body_am = rotation.0.inverse() * ang_mom.0;
+    let body_omega = body_inv_inertia.0 * body_am;
+    rotation.0 = rotation.0 * Quat::from_scaled_axis(Vec3::Y * body_omega.y * delta_seconds / 2.0);
+
+    ang_mom.0 += torque * delta_seconds / 2.0;
+
+    *ang_vel = body_inv_inertia.rotated(rotation).0 * ang_mom.0;
+
+    // R1 = Q(omega_w) R0;
+    //    = R0 Q(omega_b);
 }
 
 // #[cfg(test)]
