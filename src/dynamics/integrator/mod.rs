@@ -141,6 +141,10 @@ impl Gravity {
     pub const ZERO: Gravity = Gravity(Vector::ZERO);
 }
 
+/// Opt out of default velocity and position integration
+#[derive(Component)]
+pub struct NoDefaultIntegration;
+
 #[derive(QueryData)]
 #[query_data(mutable)]
 struct VelocityIntegrationQuery {
@@ -167,7 +171,10 @@ struct VelocityIntegrationQuery {
 
 #[allow(clippy::type_complexity)]
 fn integrate_velocities(
-    mut bodies: Query<VelocityIntegrationQuery, RigidBodyActiveFilter>,
+    mut bodies: Query<
+        VelocityIntegrationQuery,
+        (RigidBodyActiveFilter, Without<NoDefaultIntegration>),
+    >,
     gravity: Res<Gravity>,
     time: Res<Time>,
 ) {
@@ -262,7 +269,7 @@ fn integrate_positions(
             &AngularVelocity,
             Option<&LockedAxes>,
         ),
-        RigidBodyActiveFilter,
+        (RigidBodyActiveFilter, Without<NoDefaultIntegration>),
     >,
     time: Res<Time>,
 ) {
