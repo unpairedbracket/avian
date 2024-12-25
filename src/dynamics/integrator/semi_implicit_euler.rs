@@ -33,8 +33,8 @@ use super::*;
 /// This uses [semi-implicit (symplectic) Euler integration](self).
 #[allow(clippy::too_many_arguments)]
 pub fn integrate_velocity(
-    lin_vel: &mut Vector,
-    ang_vel: &mut AngularValue,
+    mut lin_vel: impl std::ops::DerefMut<Target = Vector>,
+    mut ang_vel: impl std::ops::DerefMut<Target = AngularValue>,
     force: Vector,
     torque: TorqueValue,
     mass: ComputedMass,
@@ -98,8 +98,8 @@ pub fn integrate_velocity(
 ///
 /// This uses [semi-implicit (symplectic) Euler integration](self).
 pub fn integrate_position(
-    pos: &mut Vector,
-    rot: &mut Rotation,
+    mut pos: impl std::ops::DerefMut<Target = Vector>,
+    mut rot: impl std::ops::DerefMut<Target = Rotation>,
     lin_vel: Vector,
     ang_vel: AngularValue,
     locked_axes: LockedAxes,

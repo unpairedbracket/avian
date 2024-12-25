@@ -210,8 +210,8 @@ fn integrate_velocities(
             let gravity = gravity.0 * body.gravity_scale.map_or(1.0, |scale| scale.0);
 
             semi_implicit_euler::integrate_velocity(
-                &mut body.lin_vel.0,
-                &mut body.ang_vel.0,
+                body.lin_vel.as_deref_mut(),
+                body.ang_vel.as_deref_mut(),
                 external_force,
                 external_torque,
                 *body.mass,
@@ -290,8 +290,8 @@ fn integrate_positions(
             let locked_axes = locked_axes.map_or(LockedAxes::default(), |locked_axes| *locked_axes);
 
             semi_implicit_euler::integrate_position(
-                &mut accumulated_translation.0,
-                &mut rot,
+                accumulated_translation.as_deref_mut(),
+                rot.reborrow(),
                 lin_vel.0,
                 ang_vel.0,
                 locked_axes,
