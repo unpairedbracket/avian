@@ -11,6 +11,7 @@ use bevy::{
     ecs::{intern::Interned, query::QueryData, schedule::ScheduleLabel},
     prelude::*,
 };
+use derive_more::derive::From;
 
 /// Integrates Newton's 2nd law of motion, applying forces and moving entities according to their velocities.
 ///
@@ -141,6 +142,23 @@ impl Gravity {
     pub const ZERO: Gravity = Gravity(Vector::ZERO);
 }
 
+#[derive(Component)]
+pub struct ConserveAngularMomentum;
+
+#[cfg(feature = "3d")]
+#[derive(Reflect, Clone, Copy, Component, Debug, Default, Deref, DerefMut, PartialEq, From)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", reflect(Serialize, Deserialize))]
+#[reflect(Debug, Component, Default, PartialEq)]
+pub struct AngularMomentum(Vec3);
+
+#[cfg(feature = "3d")]
+#[derive(Reflect, Clone, Copy, Component, Debug, Default, Deref, DerefMut, PartialEq, From)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", reflect(Serialize, Deserialize))]
+#[reflect(Debug, Component, Default, PartialEq)]
+pub struct PreConstraintEffectiveAngularVelocity(Vec3);
+
 #[derive(QueryData)]
 #[query_data(mutable)]
 struct VelocityIntegrationQuery {
@@ -151,6 +169,8 @@ struct VelocityIntegrationQuery {
     rot: &'static Rotation,
     lin_vel: &'static mut LinearVelocity,
     ang_vel: &'static mut AngularVelocity,
+    pre_constraint_ang_vel: &'static mut PreConstraintEffectiveAngularVelocity,
+    ang_mom: &'static mut AngularMomentum,
     force: &'static ExternalForce,
     torque: &'static ExternalTorque,
     mass: &'static ComputedMass,
@@ -163,6 +183,7 @@ struct VelocityIntegrationQuery {
     max_angular_speed: Option<&'static MaxAngularSpeed>,
     gravity_scale: Option<&'static GravityScale>,
     locked_axes: Option<&'static LockedAxes>,
+    angular_momentum_conserving: Has<ConserveAngularMomentum>,
 }
 
 #[allow(clippy::type_complexity)]
@@ -209,21 +230,28 @@ fn integrate_velocities(
             let external_torque = body.torque.torque() + body.force.torque();
             let gravity = gravity.0 * body.gravity_scale.map_or(1.0, |scale| scale.0);
 
-            semi_implicit_euler::integrate_velocity(
+            semi_implicit_euler::integrate_linear_velocity(
                 body.lin_vel.as_deref_mut(),
-                body.ang_vel.as_deref_mut(),
                 external_force,
-                external_torque,
                 *body.mass,
+                locked_axes,
+                gravity,
+                delta_secs,
+            );
+            semi_implicit_euler::integrate_angular_velocity(
+                body.angular_momentum_conserving,
+                body.ang_vel.as_deref_mut(),
+                body.ang_mom.as_deref_mut(),
+                external_torque,
                 body.angular_inertia,
                 #[cfg(feature = "3d")]
                 body.global_angular_inertia,
                 #[cfg(feature = "3d")]
                 *body.rot,
                 locked_axes,
-                gravity,
                 delta_secs,
             );
+            body.pre_constraint_ang_vel.0 = body.ang_vel.0;
         }
 
         // Clamp velocities
@@ -259,8 +287,13 @@ fn integrate_positions(
             &mut AccumulatedTranslation,
             &mut Rotation,
             &LinearVelocity,
-            &AngularVelocity,
+            &mut AngularVelocity,
+            &mut AngularMomentum,
+            &PreConstraintEffectiveAngularVelocity,
+            &ComputedAngularInertia,
+            &mut GlobalAngularInertia,
             Option<&LockedAxes>,
+            Has<ConserveAngularMomentum>,
         ),
         RigidBodyActiveFilter,
     >,
@@ -276,8 +309,13 @@ fn integrate_positions(
             mut accumulated_translation,
             mut rot,
             lin_vel,
-            ang_vel,
+            mut ang_vel,
+            mut ang_mom,
+            pre_constraint_angular_velocity,
+            body_inertia,
+            mut world_inertia,
             locked_axes,
+            angular_momentum_conserving,
         )| {
             if let Some(mut previous_position) = pre_solve_accumulated_translation {
                 previous_position.0 = pos.0;
@@ -291,9 +329,18 @@ fn integrate_positions(
 
             semi_implicit_euler::integrate_position(
                 accumulated_translation.as_deref_mut(),
-                rot.reborrow(),
                 lin_vel.0,
-                ang_vel.0,
+                locked_axes,
+                delta_secs,
+            );
+            semi_implicit_euler::integrate_rotation(
+                angular_momentum_conserving,
+                rot.reborrow(),
+                ang_mom.as_deref_mut(),
+                ang_vel.as_deref_mut(),
+                pre_constraint_angular_velocity.0,
+                world_inertia.reborrow(),
+                body_inertia,
                 locked_axes,
                 delta_secs,
             );

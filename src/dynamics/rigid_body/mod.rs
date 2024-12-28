@@ -8,6 +8,7 @@ mod locked_axes;
 mod physics_material;
 mod world_query;
 
+use dynamics::integrator::{AngularMomentum, PreConstraintEffectiveAngularVelocity};
 pub use forces::{ExternalAngularImpulse, ExternalForce, ExternalImpulse, ExternalTorque};
 pub use locked_axes::LockedAxes;
 pub use physics_material::{
@@ -268,6 +269,8 @@ use derive_more::From;
     PreSolveAngularVelocity,
     PreSolveRotation,
     PreviousRotation,
+    AngularMomentum,
+    PreConstraintEffectiveAngularVelocity,
 )]
 #[cfg_attr(feature = "3d", require(GlobalAngularInertia))]
 pub enum RigidBody {
