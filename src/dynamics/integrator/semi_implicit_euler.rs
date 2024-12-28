@@ -170,7 +170,6 @@ pub fn integrate_rotation(
                 global_inertia.tensor() * (locked_ang_vel - pre_constraints_ang_vel);
 
             *ang_mom += delta_ang_mom;
-            *ang_vel = global_inertia.inverse() * *ang_mom;
         }
 
         let scaled_axis = locked_ang_vel * delta_seconds;
@@ -179,6 +178,19 @@ pub fn integrate_rotation(
             rot.0 = delta_rot * rot.0;
             *rot = rot.fast_renormalize();
             global_inertia.update(*body_inertia, rot.0);
+        }
+        if momentum_conserving {
+            *ang_vel = global_inertia.inverse() * *ang_mom;
+            // info!(
+            //     "Conserved angular momentum energy = {}",
+            //     ang_vel.dot(*ang_mom) / 2.0 - 336841.0
+            // );
+        } else {
+            *ang_mom = global_inertia.tensor() * *ang_vel;
+            // info!(
+            //     "Conventional integration energy = {}",
+            //     ang_vel.dot(*ang_mom) / 2.0 - 336841.0
+            // );
         }
     }
 }
