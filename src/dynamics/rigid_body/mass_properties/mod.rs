@@ -409,23 +409,35 @@ fn update_mass_properties(
         commands.entity(entity).remove::<RecomputeMassProperties>();
     }
 }
+#[cfg(feature = "3d")]
+use bevy::ecs::system::SystemChangeTick;
 
 /// Updates [`GlobalAngularInertia`] for entities that match the given query filter `F`.
 #[cfg(feature = "3d")]
 pub(crate) fn update_global_angular_inertia<F: QueryFilter>(
     mut query: Populated<
         (
-            &Rotation,
-            &ComputedAngularInertia,
+            Ref<Rotation>,
+            Ref<ComputedAngularInertia>,
             &mut GlobalAngularInertia,
         ),
         (Or<(Changed<ComputedAngularInertia>, Changed<Rotation>)>, F),
     >,
+    ticks: SystemChangeTick,
 ) {
+    let now = ticks.this_run();
+
     query
         .par_iter_mut()
         .for_each(|(rotation, angular_inertia, mut global_angular_inertia)| {
-            global_angular_inertia.update(*angular_inertia, rotation.0);
+            let last_update = global_angular_inertia.last_changed();
+            if (rotation.last_changed().is_newer_than(last_update, now))
+                | (angular_inertia
+                    .last_changed()
+                    .is_newer_than(last_update, now))
+            {
+                global_angular_inertia.update(*angular_inertia, rotation.0);
+            }
         });
 }
 
