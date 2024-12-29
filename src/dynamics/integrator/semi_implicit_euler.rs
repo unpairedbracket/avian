@@ -166,10 +166,12 @@ pub fn integrate_rotation(
     #[cfg(feature = "3d")]
     {
         if momentum_conserving {
-            let delta_ang_mom =
-                global_inertia.tensor() * (locked_ang_vel - pre_constraints_ang_vel);
+            let delta_ang_vel = locked_ang_vel - pre_constraints_ang_vel;
+            if delta_ang_vel != Vec3::ZERO {
+                let delta_ang_mom = global_inertia.tensor() * delta_ang_vel;
 
-            *ang_mom += delta_ang_mom;
+                *ang_mom += delta_ang_mom;
+            }
         }
 
         let scaled_axis = locked_ang_vel * delta_seconds;
@@ -177,20 +179,12 @@ pub fn integrate_rotation(
             let delta_rot = Quaternion::from_scaled_axis(scaled_axis);
             rot.0 = delta_rot * rot.0;
             *rot = rot.fast_renormalize();
-            global_inertia.update(*body_inertia, rot.0);
+            if momentum_conserving {
+                global_inertia.update(*body_inertia, rot.0);
+            }
         }
         if momentum_conserving {
             *ang_vel = global_inertia.inverse() * *ang_mom;
-            // info!(
-            //     "Conserved angular momentum energy = {}",
-            //     ang_vel.dot(*ang_mom) / 2.0 - 336841.0
-            // );
-        } else {
-            *ang_mom = global_inertia.tensor() * *ang_vel;
-            // info!(
-            //     "Conventional integration energy = {}",
-            //     ang_vel.dot(*ang_mom) / 2.0 - 336841.0
-            // );
         }
     }
 }
