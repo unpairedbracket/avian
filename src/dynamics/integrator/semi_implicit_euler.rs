@@ -116,6 +116,65 @@ pub fn integrate_angular_velocity(
     }
 }
 
+/// Use first-order Buss
+pub fn integrate_angular_velocity2(
+    momentum_conserving: bool,
+    mut ang_vel: impl std::ops::DerefMut<Target = AngularValue>,
+    mut ang_mom: impl std::ops::DerefMut<Target = AngularValue>,
+    torque: TorqueValue,
+    angular_inertia: &ComputedAngularInertia,
+    #[cfg(feature = "3d")] global_angular_inertia: &GlobalAngularInertia,
+    #[cfg(feature = "3d")] rotation: Rotation,
+    locked_axes: LockedAxes,
+    delta_seconds: Scalar,
+) {
+    // In 2d, inertia is not orientation-dependent
+    #[cfg(feature = "2d")]
+    let global_angular_inertia = angular_inertia;
+
+    // let ang_mom_old = global_angular_inertia.tensor() * *ang_vel;
+
+    if momentum_conserving {
+        // let ang_acc = global_angular_inertia.inverse() * torque;
+
+        // // Compute step-averaged angular velocity
+        // *ang_vel += delta_seconds * ang_acc;
+    } else {
+        // Compute angular acceleration.
+        let ang_acc = angular_acceleration(torque, global_angular_inertia, locked_axes);
+
+        // Compute angular velocity delta.
+        // Δω = α * Δt
+        #[allow(unused_mut)]
+        let mut delta_ang_vel = ang_acc * delta_seconds;
+
+        #[cfg(feature = "3d")]
+        {
+            // In 3D, we should also handle gyroscopic motion, which accounts for
+            // non-spherical shapes that may wobble as they spin in the air.
+            //
+            // Gyroscopic motion happens when the inertia tensor is not uniform, causing
+            // the angular momentum to point in a different direction than the angular velocity.
+            //
+            // The gyroscopic torque is τ = ω x Iω.
+            //
+            // However, the basic semi-implicit approach can blow up, as semi-implicit Euler
+            // extrapolates velocity and the gyroscopic torque is quadratic in the angular velocity.
+            // Thus, we use implicit Euler, which is much more accurate and stable, although slightly more expensive.
+            let delta_ang_vel_gyro = solve_gyroscopic_torque(
+                *ang_vel,
+                rotation.0,
+                angular_inertia.tensor(),
+                delta_seconds,
+            );
+            delta_ang_vel += locked_axes.apply_to_angular_velocity(delta_ang_vel_gyro);
+        }
+        if delta_ang_vel != AngularVelocity::ZERO.0 && delta_ang_vel.is_finite() {
+            *ang_vel += delta_ang_vel;
+        }
+    }
+}
+
 /// Integrates position  based on the given velocity in order to
 /// find the position after `delta_seconds` have passed.
 ///
@@ -185,8 +244,74 @@ pub fn integrate_rotation(
         }
         if momentum_conserving {
             *ang_vel = global_inertia.inverse() * *ang_mom;
+            info!(
+                "energy (conserving): {}",
+                ang_vel.dot(*ang_mom) / (trace(global_inertia.tensor()) / 3.0)
+            );
+        } else {
+            *ang_mom = global_inertia.tensor() * *ang_vel;
+            info!(
+                "energy (conventional): {}",
+                ang_vel.dot(*ang_mom) / (trace(global_inertia.tensor()) / 3.0)
+            );
         }
     }
+}
+
+/// Integrates rotation based on the given velocity in order to
+/// find the rotation after `delta_seconds` have passed.
+///
+/// This uses [semi-implicit (symplectic) Euler integration](self).
+pub fn integrate_rotation2(
+    momentum_conserving: bool,
+    mut rot: impl std::ops::DerefMut<Target = Rotation>,
+    mut ang_mom: impl std::ops::DerefMut<Target = Vector>,
+    mut ang_vel: impl std::ops::DerefMut<Target = Vector>,
+    pre_constraints_ang_vel: Vector,
+    #[cfg(feature = "3d")] mut global_inertia: impl std::ops::DerefMut<Target = GlobalAngularInertia>,
+    #[cfg(feature = "3d")] body_inertia: &ComputedAngularInertia,
+    locked_axes: LockedAxes,
+    delta_seconds: Scalar,
+) {
+    // Effective inverse inertia along each rotational axis
+    let locked_ang_vel = locked_axes.apply_to_angular_velocity(*ang_vel);
+
+    // θ = θ_0 + ω * Δt
+    #[cfg(feature = "2d")]
+    {
+        let delta_rot = Rotation::radians(locked_ang_vel * delta_seconds);
+        if delta_rot != Rotation::IDENTITY && delta_rot.is_finite() {
+            *rot *= delta_rot;
+            *rot = rot.fast_renormalize();
+        }
+    }
+    #[cfg(feature = "3d")]
+    {
+        if momentum_conserving {
+            *ang_mom = global_inertia.tensor() * locked_ang_vel;
+        }
+
+        let scaled_axis = locked_ang_vel * delta_seconds;
+        if scaled_axis != AngularVelocity::ZERO.0 && scaled_axis.is_finite() {
+            let delta_rot = Quaternion::from_scaled_axis(scaled_axis);
+            rot.0 = delta_rot * rot.0;
+            *rot = rot.fast_renormalize();
+            if momentum_conserving {
+                global_inertia.update(*body_inertia, rot.0);
+            }
+        }
+        if momentum_conserving {
+            *ang_vel = global_inertia.inverse() * *ang_mom;
+            info!(
+                "energy: {}",
+                ang_vel.dot(*ang_mom) / (trace(global_inertia.tensor()) / 3.0)
+            );
+        }
+    }
+}
+
+fn trace(m: Mat3) -> f32 {
+    m.x_axis.x + m.y_axis.y + m.z_axis.z
 }
 
 /// Computes linear acceleration based on the given forces and mass.
