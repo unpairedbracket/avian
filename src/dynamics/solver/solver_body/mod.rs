@@ -69,6 +69,10 @@ pub struct SolverBody {
     /// 8 bytes in 2D and 12 bytes in 3D with the `f32` feature.
     #[cfg(feature = "3d")]
     pub angular_velocity: Vector,
+    #[cfg(feature = "3d")]
+    pub angular_momentum: Vector,
+    #[cfg(feature = "3d")]
+    pub pre_constraint_effective_angular_velocity: Vector,
     /// The change in position of the body.
     ///
     /// Stored as a delta to avoid round-off error when far from the origin.
@@ -363,6 +367,28 @@ impl SolverBodyInertia {
     #[cfg(feature = "3d")]
     pub fn effective_inv_angular_inertia(&self) -> Tensor {
         let mut inv_inertia = self.inv_inertia;
+
+        // TODO: Should we just store the effective version directly rather than computing it here?
+        if self.flags.contains(InertiaFlags::ROTATION_X_LOCKED) {
+            inv_inertia.x_axis = Vector::ZERO;
+        }
+        if self.flags.contains(InertiaFlags::ROTATION_Y_LOCKED) {
+            inv_inertia.y_axis = Vector::ZERO;
+        }
+        if self.flags.contains(InertiaFlags::ROTATION_Z_LOCKED) {
+            inv_inertia.z_axis = Vector::ZERO;
+        }
+
+        inv_inertia
+    }
+
+    #[inline]
+    #[cfg(feature = "3d")]
+    pub fn effective_inv_angular_inertia_rotated(&self, delta_rotation: &Rotation) -> Tensor {
+        use crate::Matrix;
+
+        let rot_mat3 = Matrix::from_quat(delta_rotation.0);
+        let mut inv_inertia = (rot_mat3 * self.inv_inertia) * rot_mat3.transpose();
 
         // TODO: Should we just store the effective version directly rather than computing it here?
         if self.flags.contains(InertiaFlags::ROTATION_X_LOCKED) {

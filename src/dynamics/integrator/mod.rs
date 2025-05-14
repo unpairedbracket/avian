@@ -13,7 +13,7 @@ use bevy::{
 };
 use dynamics::solver::SolverDiagnostics;
 
-use super::solver::solver_body::SolverBody;
+use super::solver::solver_body::{SolverBody, SolverBodyInertia};
 
 /// Integrates Newton's 2nd law of motion, applying forces and moving entities according to their velocities.
 ///
@@ -144,6 +144,11 @@ impl Gravity {
     pub const ZERO: Gravity = Gravity(Vector::ZERO);
 }
 
+/// If this component is present, use the
+/// angular-momentum conserving rotation integrator
+#[derive(Component)]
+pub struct ConserveAngularMomentum;
+
 #[derive(QueryData)]
 #[query_data(mutable)]
 struct VelocityIntegrationQuery {
@@ -163,6 +168,7 @@ struct VelocityIntegrationQuery {
     max_angular_speed: Option<&'static MaxAngularSpeed>,
     gravity_scale: Option<&'static GravityScale>,
     locked_axes: Option<&'static LockedAxes>,
+    angular_momentum_conserving: Has<ConserveAngularMomentum>,
 }
 
 #[allow(clippy::type_complexity)]
@@ -187,6 +193,9 @@ fn integrate_velocities(
             angular_velocity,
             #[cfg(feature = "3d")]
             delta_rotation,
+            angular_momentum,
+            #[cfg(feature = "3d")]
+            pre_constraint_effective_angular_velocity,
             ..
         } = body.solver_body.into_inner();
 
@@ -213,23 +222,33 @@ fn integrate_velocities(
             #[cfg(feature = "3d")]
             let rotation = *delta_rotation * *body.rot;
 
-            semi_implicit_euler::integrate_velocity(
+            semi_implicit_euler::integrate_linear_velocity(
                 linear_velocity,
-                angular_velocity,
                 external_force,
-                external_torque,
                 *body.mass,
+                locked_axes,
+                gravity,
+                delta_secs,
+            );
+            semi_implicit_euler::integrate_angular_velocity(
+                body.angular_momentum_conserving,
+                #[cfg(feature = "3d")]
+                is_gyroscopic,
+                angular_velocity,
+                angular_momentum,
+                external_torque,
                 body.angular_inertia,
                 #[cfg(feature = "3d")]
                 body.global_angular_inertia,
                 #[cfg(feature = "3d")]
                 rotation,
                 locked_axes,
-                gravity,
                 delta_secs,
-                #[cfg(feature = "3d")]
-                is_gyroscopic,
             );
+            #[cfg(feature = "3d")]
+            {
+                *pre_constraint_effective_angular_velocity = *angular_velocity;
+            }
         }
 
         // Clamp velocities
@@ -259,7 +278,11 @@ fn integrate_velocities(
 
 #[allow(clippy::type_complexity)]
 fn integrate_positions(
-    mut solver_bodies: Query<&mut SolverBody>,
+    mut solver_bodies: Query<(
+        &mut SolverBody,
+        &SolverBodyInertia,
+        Has<ConserveAngularMomentum>,
+    )>,
     time: Res<Time>,
     mut diagnostics: ResMut<SolverDiagnostics>,
 ) {
@@ -267,25 +290,51 @@ fn integrate_positions(
 
     let delta_secs = time.delta_seconds_adjusted();
 
-    solver_bodies.par_iter_mut().for_each(|body| {
-        let SolverBody {
-            linear_velocity,
-            angular_velocity,
-            delta_position,
-            delta_rotation,
-            ..
-        } = body.into_inner();
+    solver_bodies
+        .par_iter_mut()
+        .for_each(|(body, inertia, momentum_conserving)| {
+            let SolverBody {
+                linear_velocity,
+                angular_velocity,
+                angular_momentum,
+                pre_constraint_effective_angular_velocity,
+                delta_position,
+                delta_rotation,
+                ..
+            } = body.into_inner();
 
-        *delta_position += *linear_velocity * delta_secs;
-        #[cfg(feature = "2d")]
-        {
-            *delta_rotation = delta_rotation.add_angle_fast(*angular_velocity * delta_secs);
-        }
-        #[cfg(feature = "3d")]
-        {
-            delta_rotation.0 *= Quaternion::from_scaled_axis(*angular_velocity * delta_secs);
-        }
-    });
+            *delta_position += *linear_velocity * delta_secs;
+            #[cfg(feature = "2d")]
+            {
+                *delta_rotation = delta_rotation.add_angle_fast(*angular_velocity * delta_secs);
+            }
+            #[cfg(feature = "3d")]
+            {
+                if momentum_conserving {
+                    // Correct the angular momentum for all the angular impulses
+                    // imparted on it in the solver
+                    // This could be avoided by always incrementing AM and AV together
+                    // in the solver, and that would allow eliminating
+                    // pre_constraint_angular_velocity
+                    // Not sure which would be faster though
+                    let delta_ang_vel =
+                        *angular_velocity - *pre_constraint_effective_angular_velocity;
+
+                    if delta_ang_vel != Vec3::ZERO {
+                        let inv_inertia = inertia.effective_inv_angular_inertia();
+                        *angular_momentum += inv_inertia.inverse() * delta_ang_vel;
+                    }
+                }
+                delta_rotation.0 =
+                    Quaternion::from_scaled_axis(*angular_velocity * delta_secs) * delta_rotation.0;
+
+                if momentum_conserving {
+                    let new_inv_inertia =
+                        inertia.effective_inv_angular_inertia_rotated(delta_rotation);
+                    *angular_velocity = new_inv_inertia * *angular_momentum;
+                }
+            }
+        });
 
     diagnostics.integrate_positions += start.elapsed();
 }
