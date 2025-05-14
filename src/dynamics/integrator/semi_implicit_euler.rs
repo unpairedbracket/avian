@@ -32,15 +32,10 @@ use super::*;
 ///
 /// This uses [semi-implicit (symplectic) Euler integration](self).
 #[allow(clippy::too_many_arguments)]
-pub fn integrate_velocity(
+pub fn integrate_linear_velocity(
     lin_vel: &mut Vector,
-    ang_vel: &mut AngularValue,
     force: Vector,
-    torque: TorqueValue,
     mass: ComputedMass,
-    angular_inertia: &ComputedAngularInertia,
-    #[cfg(feature = "3d")] global_angular_inertia: &GlobalAngularInertia,
-    #[cfg(feature = "3d")] rotation: Rotation,
     locked_axes: LockedAxes,
     gravity: Vector,
     delta_seconds: Scalar,
@@ -51,37 +46,64 @@ pub fn integrate_velocity(
     // Compute next linear velocity.
     // v = v_0 + a * Δt
     *lin_vel += lin_acc * delta_seconds;
+}
 
-    // Compute angular acceleration.
+/// Integrates velocity based on the given forces in order to find
+/// the linear and angular velocity after `delta_seconds` have passed.
+///
+/// This uses [semi-implicit (symplectic) Euler integration](self).
+#[allow(clippy::too_many_arguments)]
+pub fn integrate_angular_velocity(
+    momentum_conserving: bool,
+    ang_vel: &mut AngularValue,
+    ang_mom: &mut AngularValue,
+    torque: TorqueValue,
+    angular_inertia: &ComputedAngularInertia,
+    #[cfg(feature = "3d")] global_angular_inertia: &GlobalAngularInertia,
+    #[cfg(feature = "3d")] rotation: Rotation,
+    locked_axes: LockedAxes,
+    delta_seconds: Scalar,
+) {
     #[cfg(feature = "2d")]
-    let ang_acc = angular_acceleration(torque, angular_inertia, locked_axes);
-    #[cfg(feature = "3d")]
-    let ang_acc = angular_acceleration(torque, global_angular_inertia, locked_axes);
+    let global_angular_inertia = angular_inertia;
 
-    // Compute angular velocity delta.
-    // Δω = α * Δt
-    *ang_vel += ang_acc * delta_seconds;
+    let ang_mom_old = *ang_mom;
 
-    #[cfg(feature = "3d")]
-    {
-        // In 3D, we should also handle gyroscopic motion, which accounts for
-        // non-spherical shapes that may wobble as they spin in the air.
-        //
-        // Gyroscopic motion happens when the inertia tensor is not uniform, causing
-        // the angular momentum to point in a different direction than the angular velocity.
-        //
-        // The gyroscopic torque is τ = ω x Iω.
-        //
-        // However, the basic semi-implicit approach can blow up, as semi-implicit Euler
-        // extrapolates velocity and the gyroscopic torque is quadratic in the angular velocity.
-        // Thus, we use implicit Euler, which is much more accurate and stable, although slightly more expensive.
-        let delta_ang_vel_gyro = solve_gyroscopic_torque(
-            *ang_vel,
-            rotation.0,
-            angular_inertia.tensor(),
-            delta_seconds,
-        );
-        *ang_vel += locked_axes.apply_to_angular_velocity(delta_ang_vel_gyro);
+    if momentum_conserving {
+        let ang_acc = global_angular_inertia.inverse() * (torque - ang_vel.cross(ang_mom_old));
+        // Compute step-averaged angular velocity
+        *ang_vel += delta_seconds / 2.0 * ang_acc;
+        // Update angular momentum
+        *ang_mom += torque * delta_seconds;
+    } else {
+        // Compute angular acceleration.
+        let ang_acc = angular_acceleration(torque, global_angular_inertia, locked_axes);
+
+        // Compute angular velocity delta.
+        // Δω = α * Δt
+        *ang_vel += ang_acc * delta_seconds;
+
+        #[cfg(feature = "3d")]
+        {
+            // In 3D, we should also handle gyroscopic motion, which accounts for
+            // non-spherical shapes that may wobble as they spin in the air.
+            //
+            // Gyroscopic motion happens when the inertia tensor is not uniform, causing
+            // the angular momentum to point in a different direction than the angular velocity.
+            //
+            // The gyroscopic torque is τ = ω x Iω.
+            //
+            // However, the basic semi-implicit approach can blow up, as semi-implicit Euler
+            // extrapolates velocity and the gyroscopic torque is quadratic in the angular velocity.
+            // Thus, we use implicit Euler, which is much more accurate and stable, although slightly more expensive.
+            let delta_ang_vel_gyro = solve_gyroscopic_torque(
+                *ang_vel,
+                rotation.0,
+                angular_inertia.tensor(),
+                delta_seconds,
+            );
+            *ang_vel += locked_axes.apply_to_angular_velocity(delta_ang_vel_gyro);
+        }
     }
 }
 
@@ -229,21 +251,30 @@ mod tests {
 
         let gravity = Vector::NEG_Y * 9.81;
 
+        let angular_momentum_conservation = false;
+        let mut angular_momentum = angular_inertia * angular_velocity;
+
         // Step by 100 steps of 0.1 seconds
         for _ in 0..100 {
-            integrate_velocity(
+            integrate_linear_velocity(
                 &mut linear_velocity,
-                &mut angular_velocity,
-                default(),
                 default(),
                 mass,
+                default(),
+                gravity,
+                1.0 / 10.0,
+            );
+            integrate_angular_velocity(
+                angular_momentum_conservation,
+                &mut angular_velocity,
+                &mut angular_momentum,
+                default(),
                 &angular_inertia,
                 #[cfg(feature = "3d")]
                 &GlobalAngularInertia::new(angular_inertia, rotation),
                 #[cfg(feature = "3d")]
                 rotation,
                 default(),
-                gravity,
                 1.0 / 10.0,
             );
             integrate_position(
