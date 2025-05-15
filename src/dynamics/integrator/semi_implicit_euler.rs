@@ -72,7 +72,7 @@ pub fn integrate_angular_velocity(
         // Compute step-averaged angular velocity
         // This is the "augmented second-order" method due to Buss
         // Higher, or lower, order methods are available.
-        *ang_vel += delta_seconds / 2.0 * (ang_acc + delta_seconds / 6.0 * ang_acc.cross(*ang_vel));
+        *ang_vel += delta_seconds / 2.0 * (ang_acc); // + delta_seconds / 6.0 * ang_acc.cross(*ang_vel));
 
         // Update angular momentum
         *ang_mom += torque * delta_seconds;

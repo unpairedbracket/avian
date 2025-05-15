@@ -11,8 +11,8 @@
 //!
 //! Avian handles gyroscopic motion automatically. No special setup is required.
 
-use avian3d::{math::*, prelude::*};
-use bevy::prelude::*;
+use avian3d::{dynamics::integrator::ConserveAngularMomentum, math::*, prelude::*};
+use bevy::{color::palettes::tailwind, prelude::*};
 use core::f32::consts::FRAC_PI_2;
 use examples_common_3d::ExampleCommonPlugin;
 
@@ -52,7 +52,8 @@ fn setup(
         THandle,
         RigidBody::Dynamic,
         AngularVelocity(Vector::Z * 10.0),
-        Transform::from_xyz(-4.0, 0.0, 0.0).with_rotation(Quat::from_rotation_y(FRAC_PI_2)),
+        Transform::from_xyz(-4.0, -3.0, 0.0)
+            .with_rotation(Quat::from_rotation_y(FRAC_PI_2 - 0.001)),
         Collider::from(large_cylinder),
         Mesh3d(meshes.add(large_cylinder)),
         MeshMaterial3d(material.clone()),
@@ -68,10 +69,56 @@ fn setup(
     let racket_handle_circular = Cylinder::new(0.25, 1.5);
     let racket_face_circular = Cylinder::new(1.5, 0.2);
     commands.spawn((
-        Name::new("Tennis Racket"),
+        Name::new("Tennis Racket 1"),
         Racket,
         RigidBody::Dynamic,
-        Transform::from_xyz(4.0, 0.0, 0.0).with_rotation(Quat::from_rotation_y(0.001)),
+        Transform::from_xyz(4.0, -3.5, 0.0).with_rotation(Quat::from_rotation_y(0.001)),
+        AngularVelocity(Vector::X * 10.0),
+        Visibility::default(),
+        children![
+            (
+                Name::new("Racket Handle"),
+                Transform::from_xyz(0.0, 0.0, 1.5).with_rotation(Quat::from_rotation_x(FRAC_PI_2)),
+                Collider::from(racket_handle_circular),
+                Mesh3d(meshes.add(racket_handle_circular)),
+                MeshMaterial3d(material.clone()),
+            ),
+            (
+                Name::new("Racket Face"),
+                Transform::from_xyz(0.0, 0.0, -1.5).with_scale(Vec3::new(1.0, 1.0, 1.5)),
+                Collider::from(racket_face_circular),
+                Mesh3d(meshes.add(racket_face_circular)),
+                MeshMaterial3d(material.clone()),
+            )
+        ],
+    ));
+
+    let material = materials.add(Color::from(tailwind::RED_500));
+
+    commands.spawn((
+        Name::new("T-handle 2"),
+        THandle,
+        RigidBody::Dynamic,
+        ConserveAngularMomentum,
+        AngularVelocity(Vector::Z * 10.0),
+        Transform::from_xyz(-4.0, 3.0, 0.0).with_rotation(Quat::from_rotation_y(FRAC_PI_2 - 0.001)),
+        Collider::from(large_cylinder),
+        Mesh3d(meshes.add(large_cylinder)),
+        MeshMaterial3d(material.clone()),
+        children![(
+            Transform::from_xyz(1.0, 0.0, 0.0).with_rotation(Quat::from_rotation_z(FRAC_PI_2)),
+            Collider::from(small_cylinder),
+            Mesh3d(meshes.add(small_cylinder)),
+            MeshMaterial3d(material.clone()),
+        )],
+    ));
+
+    commands.spawn((
+        Name::new("Tennis Racket 2"),
+        Racket,
+        RigidBody::Dynamic,
+        ConserveAngularMomentum,
+        Transform::from_xyz(4.0, 3.5, 0.0).with_rotation(Quat::from_rotation_y(0.001)),
         AngularVelocity(Vector::X * 10.0),
         Visibility::default(),
         children![
@@ -111,9 +158,17 @@ fn setup(
 
 /// Logs the angular momentum of the racket to see how it changes over time.
 fn log_racket_angular_momentum(
-    query: Query<(&AngularVelocity, &GlobalTransform, &ComputedAngularInertia), With<Racket>>,
+    query: Query<
+        (
+            &Name,
+            &AngularVelocity,
+            &GlobalTransform,
+            &ComputedAngularInertia,
+        ),
+        With<Racket>,
+    >,
 ) {
-    for (angular_velocity, global_transform, inertia) in &query {
+    for (name, angular_velocity, global_transform, inertia) in &query {
         // Compute the up-to-date inertia tensor in world space.
         let world_inertia = inertia.rotated(global_transform.rotation().adjust_precision());
 
@@ -127,6 +182,12 @@ fn log_racket_angular_momentum(
         // of the simulation, energy may still gradually decrease over time. This is expected
         // and typically acceptable for game physics. The more important problem to avoid is
         // more energy being introduced into the system, as that can lead to instability.
-        info!("Racket angular momentum: {:.1}", angular_momentum.length());
+        info!(
+            "{} angular momentum: {:.1} (length {:.1}), energy: {:.1}",
+            name,
+            angular_momentum,
+            angular_momentum.length(),
+            angular_velocity.dot(angular_momentum)
+        );
     }
 }
