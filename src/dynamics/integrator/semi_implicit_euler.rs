@@ -61,22 +61,24 @@ pub fn integrate_angular_velocity(
     torque: TorqueValue,
     angular_inertia: &ComputedAngularInertia,
     #[cfg(feature = "3d")] global_angular_inertia: &GlobalAngularInertia,
+    #[cfg(feature = "3d")] good_inv_angular_inertia: Mat3,
     #[cfg(feature = "3d")] rotation: Rotation,
     locked_axes: LockedAxes,
     delta_seconds: Scalar,
 ) {
-    #[cfg(feature = "2d")]
-    let global_angular_inertia = angular_inertia;
-
-    let ang_mom_old = *ang_mom;
-
     if momentum_conserving {
-        let ang_acc = global_angular_inertia.inverse() * (torque - ang_vel.cross(ang_mom_old));
+        let ang_acc = good_inv_angular_inertia * (torque - ang_vel.cross(*ang_mom));
+
         // Compute step-averaged angular velocity
-        *ang_vel += delta_seconds / 2.0 * ang_acc;
+        // This is the "augmented second-order" method due to Buss
+        // Higher, or lower, order methods are available.
+        *ang_vel += delta_seconds / 2.0 * (ang_acc + delta_seconds / 6.0 * ang_acc.cross(*ang_vel));
+
         // Update angular momentum
         *ang_mom += torque * delta_seconds;
     } else {
+        #[cfg(feature = "2d")]
+        let global_angular_inertia = angular_inertia;
         // Compute angular acceleration.
         let ang_acc = angular_acceleration(torque, global_angular_inertia, locked_axes);
 
@@ -302,6 +304,8 @@ mod tests {
                 &angular_inertia,
                 #[cfg(feature = "3d")]
                 &GlobalAngularInertia::new(angular_inertia, rotation),
+                #[cfg(feature = "3d")]
+                GlobalAngularInertia::new(angular_inertia, rotation).inverse(),
                 #[cfg(feature = "3d")]
                 rotation,
                 default(),

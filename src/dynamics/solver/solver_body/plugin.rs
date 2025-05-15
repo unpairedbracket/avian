@@ -7,8 +7,11 @@ use super::{SolverBody, SolverBodyInertia};
 #[cfg(feature = "3d")]
 use crate::{dynamics::solver::solver_body::SolverBodyFlags, math::MatExt};
 use crate::{
-    dynamics::solver::SolverDiagnostics,
-    prelude::{ComputedAngularInertia, ComputedCenterOfMass, ComputedMass, LockedAxes},
+    dynamics::{integrator::ConserveAngularMomentum, solver::SolverDiagnostics},
+    prelude::{
+        mass_properties::update_global_angular_inertia, ComputedAngularInertia,
+        ComputedCenterOfMass, ComputedMass, LockedAxes,
+    },
     AngularVelocity, LinearVelocity, PhysicsSchedule, Position, RigidBody, RigidBodyActiveFilter,
     RigidBodyDisabled, Rotation, Sleeping, SolverSet, Vector,
 };
@@ -110,7 +113,9 @@ impl Plugin for SolverBodyPlugin {
         // Write back solver body data to rigid bodies after the substepping loop.
         app.add_systems(
             PhysicsSchedule,
-            writeback_solver_bodies.in_set(SolverSet::Finalize),
+            (writeback_solver_bodies, update_global_angular_inertia::<()>)
+                .chain()
+                .in_set(SolverSet::Finalize),
         );
     }
 }
@@ -177,6 +182,7 @@ fn prepare_solver_bodies(
         &ComputedMass,
         &ComputedAngularInertia,
         Option<&LockedAxes>,
+        Has<ConserveAngularMomentum>,
     )>,
 ) {
     #[allow(unused_variables)]
@@ -190,18 +196,21 @@ fn prepare_solver_bodies(
             mass,
             angular_inertia,
             locked_axes,
+            conserve_angular_momentum,
         )| {
+            #[cfg(feature = "2d")]
+            let world_angular_inertia = angular_inertia;
+            #[cfg(feature = "3d")]
+            let world_angular_inertia = angular_inertia.rotated(rotation.0);
             solver_body.linear_velocity = linear_velocity.0;
             solver_body.angular_velocity = angular_velocity.0;
+            solver_body.angular_momentum = world_angular_inertia.tensor() * angular_velocity.0;
             solver_body.delta_position = Vector::ZERO;
             solver_body.delta_rotation = Rotation::IDENTITY;
 
             *inertial_properties = SolverBodyInertia::new(
                 mass.inverse(),
-                #[cfg(feature = "2d")]
-                angular_inertia.inverse(),
-                #[cfg(feature = "3d")]
-                angular_inertia.rotated(rotation.0).inverse(),
+                world_angular_inertia.inverse(),
                 locked_axes.copied().unwrap_or_default(),
             );
 
@@ -217,6 +226,11 @@ fn prepare_solver_bodies(
                 solver_body
                     .flags
                     .set(SolverBodyFlags::GYROSCOPIC_MOTION, !is_inertia_isotropic);
+
+                solver_body.flags.set(
+                    SolverBodyFlags::MOMENTUM_CONSERVING,
+                    conserve_angular_momentum,
+                );
             }
         },
     );
