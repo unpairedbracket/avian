@@ -4,8 +4,11 @@ use bevy::{
 };
 
 use crate::{
-    dynamics::solver::SolverDiagnostics,
-    prelude::{ComputedCenterOfMass, ComputedMass, LockedAxes},
+    dynamics::{integrator::ConserveAngularMomentum, solver::SolverDiagnostics},
+    prelude::{
+        mass_properties::update_global_angular_inertia, ComputedCenterOfMass, ComputedMass,
+        LockedAxes,
+    },
     AngularVelocity, GlobalAngularInertia, LinearVelocity, PhysicsSchedule, Position, RigidBody,
     RigidBodyActiveFilter, RigidBodyDisabled, Rotation, Sleeping, SolverSet, Vector,
 };
@@ -109,7 +112,9 @@ impl Plugin for SolverBodyPlugin {
         // Write back solver body data to rigid bodies after the substepping loop.
         app.add_systems(
             PhysicsSchedule,
-            writeback_solver_bodies.in_set(SolverSet::Finalize),
+            (writeback_solver_bodies, update_global_angular_inertia::<()>)
+                .chain()
+                .in_set(SolverSet::Finalize),
         );
     }
 }
@@ -175,6 +180,7 @@ fn prepare_solver_bodies(
         &ComputedMass,
         &GlobalAngularInertia,
         Option<&LockedAxes>,
+        Has<ConserveAngularMomentum>,
     )>,
 ) {
     query.par_iter_mut().for_each(
@@ -186,12 +192,17 @@ fn prepare_solver_bodies(
             mass,
             angular_inertia,
             locked_axes,
+            conserve_angular_momentum,
         )| {
             solver_body.linear_velocity = linear_velocity.0;
             solver_body.angular_velocity = angular_velocity.0;
+            solver_body.angular_momentum = angular_inertia.tensor() * angular_velocity.0;
             solver_body.delta_position = Vector::ZERO;
             solver_body.delta_rotation = Rotation::IDENTITY;
-
+            solver_body.flags = 0;
+            if conserve_angular_momentum {
+                solver_body.flags |= 1 << 2;
+            }
             *inertial_properties = SolverBodyInertia::new(
                 mass.inverse(),
                 angular_inertia.inverse(),

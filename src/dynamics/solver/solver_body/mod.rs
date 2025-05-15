@@ -105,6 +105,11 @@ impl SolverBody {
             self.linear_velocity + self.angular_velocity.cross(point)
         }
     }
+
+    pub fn momentum_conserving(&self) -> bool {
+        (self.flags & 1 << 2) != 0
+        // false
+    }
 }
 
 /*
@@ -183,7 +188,9 @@ pub struct SolverBodyInertia {
     /// 36 bytes with the `f32` feature. This will be 32 bytes
     /// in the future if/when we switch to a symmetric 3x3 matrix representation.
     #[cfg(feature = "3d")]
-    inv_inertia: Tensor,
+    initial_inv_inertia: Tensor,
+    #[cfg(feature = "3d")]
+    inv_inertia_rotated: Tensor,
 
     // TODO: We could also store the `Dominance` of the body here if we wanted to.
     // TODO: Technically we don't even need these flags at the moment.
@@ -204,7 +211,9 @@ impl Default for SolverBodyInertia {
             #[cfg(feature = "2d")]
             effective_inv_inertia: 0.0,
             #[cfg(feature = "3d")]
-            inv_inertia: Tensor::ZERO,
+            initial_inv_inertia: Tensor::ZERO,
+            #[cfg(feature = "3d")]
+            inv_inertia_rotated: Tensor::ZERO,
             flags: InertiaFlags::STATIC,
         }
     }
@@ -285,19 +294,20 @@ impl SolverBodyInertia {
     /// and locked axes.
     #[inline]
     #[cfg(feature = "3d")]
-    pub fn new(inv_mass: Scalar, inv_inertia: Tensor, locked_axes: LockedAxes) -> Self {
+    pub fn new(inv_mass: Scalar, initial_inv_inertia: Tensor, locked_axes: LockedAxes) -> Self {
         let mut flags = InertiaFlags(locked_axes.to_bits() as u32);
 
         if inv_mass == 0.0 {
             flags |= InertiaFlags::INFINITE_MASS;
         }
-        if inv_inertia == Tensor::ZERO {
+        if initial_inv_inertia == Tensor::ZERO {
             flags |= InertiaFlags::INFINITE_ANGULAR_INERTIA;
         }
 
         Self {
             inv_mass,
-            inv_inertia,
+            inv_inertia_rotated: initial_inv_inertia,
+            initial_inv_inertia,
             flags: InertiaFlags(flags.0),
         }
     }
@@ -347,7 +357,7 @@ impl SolverBodyInertia {
     #[inline]
     #[cfg(feature = "3d")]
     pub fn effective_inv_angular_inertia(&self) -> Tensor {
-        let mut inv_inertia = self.inv_inertia;
+        let mut inv_inertia = self.inv_inertia_rotated;
 
         // TODO: Should we just store the effective version directly rather than computing it here?
         if self.flags.contains(InertiaFlags::ROTATION_X_LOCKED) {
@@ -365,24 +375,9 @@ impl SolverBodyInertia {
 
     #[inline]
     #[cfg(feature = "3d")]
-    pub fn effective_inv_angular_inertia_rotated(&self, delta_rotation: &Rotation) -> Tensor {
-        use crate::Matrix;
-
-        let rot_mat3 = Matrix::from_quat(delta_rotation.0);
-        let mut inv_inertia = (rot_mat3 * self.inv_inertia) * rot_mat3.transpose();
-
-        // TODO: Should we just store the effective version directly rather than computing it here?
-        if self.flags.contains(InertiaFlags::ROTATION_X_LOCKED) {
-            inv_inertia.x_axis = Vector::ZERO;
-        }
-        if self.flags.contains(InertiaFlags::ROTATION_Y_LOCKED) {
-            inv_inertia.y_axis = Vector::ZERO;
-        }
-        if self.flags.contains(InertiaFlags::ROTATION_Z_LOCKED) {
-            inv_inertia.z_axis = Vector::ZERO;
-        }
-
-        inv_inertia
+    pub fn update_inertia_rotated(&mut self, delta_rotation: &Rotation) {
+        let rot_mat3 = Mat3::from_quat(delta_rotation.0);
+        self.inv_inertia_rotated = (rot_mat3 * self.initial_inv_inertia) * rot_mat3.transpose();
     }
 
     /// Returns the [`InertiaFlags`] of the body.
