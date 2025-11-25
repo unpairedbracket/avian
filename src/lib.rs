@@ -17,7 +17,7 @@
 //! ## Add the Dependency
 //!
 //! First, add `avian2d` or `avian3d` to the dependencies in your `Cargo.toml`:
-//!  
+//!
 //! ```toml
 //! # For 2D applications:
 //! [dependencies]
@@ -369,10 +369,12 @@
 //!
 //! ## Is there a character controller?
 //!
-//! Avian does not have a built-in character controller yet, so if you need one,
-//! you will need to implement it yourself. However, third party character controllers
-//! like [`bevy_tnua`](https://github.com/idanarye/bevy-tnua) support Avian, and [`bevy_mod_wanderlust`](https://github.com/PROMETHIA-27/bevy_mod_wanderlust)
-//! and others are also likely to get Avian support soon.
+//! Avian does not have a built-in character controller yet. However, it has a [`MoveAndSlide`]
+//! system parameter with utilities for implementing your own kinematic character controllers.
+//! See its documentation for more information.
+//!
+//! There are also some third party character controllers such as [`bevy_tnua`](https://github.com/idanarye/bevy-tnua)
+//! that support Avian.
 //!
 //! For custom character controllers, you can take a look at the
 #![cfg_attr(
@@ -502,6 +504,11 @@ pub extern crate parry3d as parry;
 #[cfg(all(feature = "3d", feature = "parry-f64"))]
 pub extern crate parry3d_f64 as parry;
 
+#[cfg(all(
+    feature = "default-collider",
+    any(feature = "parry-f32", feature = "parry-f64")
+))]
+pub mod character_controller;
 pub mod collision;
 #[cfg(feature = "debug-plugin")]
 pub mod debug_render;
@@ -547,6 +554,12 @@ pub mod prelude {
         },
         spatial_query::{self, *},
     };
+
+    #[cfg(all(
+        feature = "default-collider",
+        any(feature = "parry-f32", feature = "parry-f64")
+    ))]
+    pub use crate::character_controller::prelude::*;
     pub(crate) use crate::{
         diagnostics::AppDiagnosticsExt,
         math::*,
