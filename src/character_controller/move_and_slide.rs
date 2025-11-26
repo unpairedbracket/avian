@@ -135,6 +135,8 @@ pub struct MoveAndSlideConfig {
     ///
     /// Increase the value if you notice your character getting stuck in geometry.
     /// Decrease it when you notice jittering, especially around V-shaped walls.
+    ///
+    /// This is implicitly scaled by the [`PhysicsLengthUnit`].
     pub skin_width: Scalar,
 
     /// The initial planes to consider for the move and slide algorithm.
@@ -218,6 +220,8 @@ pub struct DepenetrationConfig {
     ///
     /// Increase the value if you notice your character getting stuck in geometry.
     /// Decrease it when you notice jittering, especially around V-shaped walls.
+    ///
+    /// This is implicitly scaled by the [`PhysicsLengthUnit`].
     pub skin_width: Scalar,
 }
 
@@ -276,7 +280,8 @@ pub struct MoveAndSlideHitData<'a> {
     /// The entity of the collider that was hit by the shape.
     pub entity: Entity,
 
-    /// The maximum distance that is safe to move in the given direction so that the collider still keeps a distance of `skin_width` to the other colliders.
+    /// The maximum distance that is safe to move in the given direction so that the collider
+    /// still keeps a distance of `skin_width` to the other colliders.
     ///
     /// This is `0.0` when any of the following is true:
     ///
@@ -322,7 +327,8 @@ pub struct MoveHitData {
     /// The entity of the collider that was hit by the shape.
     pub entity: Entity,
 
-    /// The maximum distance that is safe to move in the given direction so that the collider still keeps a distance of `skin_width` to the other colliders.
+    /// The maximum distance that is safe to move in the given direction so that the collider
+    /// still keeps a distance of `skin_width` to the other colliders.
     ///
     /// This is `0.0` when any of the following is true:
     ///
@@ -476,6 +482,7 @@ impl<'w, 's> MoveAndSlide<'w, 's> {
                 delta_time.as_secs_f64()
             }
         };
+        let skin_width = self.length_unit.0 * config.skin_width;
 
         // Initial depenetration pass
         let depenetration_offset =
@@ -502,14 +509,9 @@ impl<'w, 's> MoveAndSlide<'w, 's> {
             }
 
             // Sweep the shape along the velocity vector.
-            let Some(sweep_hit) = self.cast_move(
-                shape,
-                position,
-                shape_rotation,
-                sweep,
-                config.skin_width,
-                filter,
-            ) else {
+            let Some(sweep_hit) =
+                self.cast_move(shape, position, shape_rotation, sweep, skin_width, filter)
+            else {
                 // No collision, move the full distance.
                 position += sweep;
                 break;
@@ -530,7 +532,7 @@ impl<'w, 's> MoveAndSlide<'w, 's> {
                 shape_rotation,
                 // Use a slightly larger skin width to ensure we catch all contacts for velocity clipping.
                 // Depenetration still uses just the normal skin width.
-                config.skin_width * 2.0,
+                skin_width * 2.0,
                 filter,
                 |contact_point, mut normal| {
                     // Check if this plane is nearly parallel to an existing one.
@@ -774,7 +776,7 @@ impl<'w, 's> MoveAndSlide<'w, 's> {
     }
 
     /// Moves a collider so that it no longer intersects any other collider and keeps a minimum distance
-    /// of [`DepenetrationConfig::skin_width`].
+    /// of [`DepenetrationConfig::skin_width`] scaled by the [`PhysicsLengthUnit`].
     ///
     /// Depenetration is an iterative process that solves penetrations for all planes, until we either reached
     /// [`MoveAndSlideConfig::move_and_slide_iterations`] or the accumulated error is less than [`MoveAndSlideConfig::max_depenetration_error`].
@@ -864,10 +866,13 @@ impl<'w, 's> MoveAndSlide<'w, 's> {
             shape,
             shape_position,
             shape_rotation,
-            config.skin_width,
+            self.length_unit.0 * config.skin_width,
             filter,
             |contact_point, normal| {
-                intersections.push((normal, contact_point.penetration + config.skin_width));
+                intersections.push((
+                    normal,
+                    contact_point.penetration + self.length_unit.0 * config.skin_width,
+                ));
                 true
             },
         );
@@ -877,8 +882,9 @@ impl<'w, 's> MoveAndSlide<'w, 's> {
     /// Manual version of [`MoveAndSlide::depenetrate`].
     ///
     /// Moves a collider so that it no longer intersects any other collider and keeps a minimum distance
-    /// of [`DepenetrationConfig::skin_width`]. The intersections should be provided as a list of contact plane
-    /// normals and penetration distances, which can be obtained via [`MoveAndSlide::intersections`].
+    /// of [`DepenetrationConfig::skin_width`] scaled by the [`PhysicsLengthUnit`]. The intersections
+    /// should be provided as a list of contact plane normals and penetration distances, which can be obtained
+    /// via [`MoveAndSlide::intersections`].
     ///
     /// Depenetration is an iterative process that solves penetrations for all planes, until we either reached
     /// [`MoveAndSlideConfig::move_and_slide_iterations`] or the accumulated error is less than [`MoveAndSlideConfig::max_depenetration_error`].
@@ -1021,6 +1027,7 @@ impl<'w, 's> MoveAndSlide<'w, 's> {
         let aabb_intersections = self
             .query_pipeline
             .aabb_intersections_with_aabb(expanded_aabb);
+
         for intersection_entity in aabb_intersections {
             let Ok((intersection_collider, intersection_pos, intersection_rot, layers)) =
                 self.colliders.get(intersection_entity)
