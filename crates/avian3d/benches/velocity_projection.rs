@@ -1,5 +1,5 @@
 use bevy_math::{Dir3, Vec3};
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{BenchmarkId, Criterion, PlotConfiguration, criterion_group, criterion_main};
 use std::hint::black_box;
 
 use avian3d::{character_controller::velocity_project::*, math::PI};
@@ -13,6 +13,7 @@ fn bench_velocity_projection(c: &mut Criterion) {
         Dir3::from_xyz(0.0, 2.0, 1.0).unwrap(),
         Dir3::from_xyz(0.0, -2.0, 1.0).unwrap(),
         Dir3::from_xyz(1.5, 1.5, 1.0).unwrap(),
+        Dir3::from_xyz(1.5, -1.5, 1.0).unwrap(),
         Dir3::from_xyz(-1.5, 1.5, 1.0).unwrap(),
         Dir3::from_xyz(-1.5, -1.5, 1.0).unwrap(),
         Dir3::from_xyz(1.0, 1.75, 1.0).unwrap(),
@@ -29,32 +30,26 @@ fn bench_velocity_projection(c: &mut Criterion) {
     // so ensure we're sampling the sphere evenly
     let mut velocities = QuasiRandomDirection::default();
 
-    for n in 0..normals.len() {
+    for n in 1..=normals.len() {
         velocities.reset();
-        group.bench_with_input(
-            BenchmarkId::new("old", n + 1),
-            &normals[..=n],
-            |b, norms| {
-                b.iter_batched(
-                    || velocities.next().unwrap(),
-                    |v| project_velocity_old(black_box(v), black_box(norms)),
-                    criterion::BatchSize::SmallInput,
-                )
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("old", n), &normals[..n], |b, norms| {
+            b.iter_batched(
+                || velocities.next().unwrap(),
+                |v| project_velocity_old(black_box(v), black_box(norms)),
+                criterion::BatchSize::SmallInput,
+            )
+        });
         velocities.reset();
-        group.bench_with_input(
-            BenchmarkId::new("new", n + 1),
-            &normals[..=n],
-            |b, norms| {
-                b.iter_batched(
-                    || velocities.next().unwrap(),
-                    |v| project_velocity_new(black_box(v), black_box(norms)),
-                    criterion::BatchSize::SmallInput,
-                )
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("new", n), &normals[..n], |b, norms| {
+            b.iter_batched(
+                || velocities.next().unwrap(),
+                |v| project_velocity_new(black_box(v), black_box(norms)),
+                criterion::BatchSize::SmallInput,
+            )
+        });
     }
+    group
+        .plot_config(PlotConfiguration::default().summary_scale(criterion::AxisScale::Logarithmic));
 }
 
 criterion_group!(benches, bench_velocity_projection);
