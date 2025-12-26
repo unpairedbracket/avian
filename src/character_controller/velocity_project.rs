@@ -152,7 +152,7 @@ fn project_onto_conical_hull(x0: Vector, normals: &[Dir]) -> Vector {
 
         (maybe_cone, search_direction) = cone.project_point(x0, best_normal);
         n_iters += 1;
-        if n_iters >= 100 {
+        if n_iters >= 10 {
             break;
         }
     }
