@@ -1,4 +1,4 @@
-use bevy::log::info;
+use bevy::log::debug;
 
 use crate::prelude::*;
 
@@ -156,12 +156,12 @@ fn project_onto_conical_hull(x0: Vector, normals: &[Dir]) -> Vector {
         }
     }
     if n_iters > 4 {
-        info!(
-            "Failed to converge with {} normals took {n_iters} iterations",
+        debug!(
+            "Slow to converge with {} normals, took {n_iters} iterations",
             normals.len()
         );
-        info!("Input -v = {x0}");
-        info!("Normals = {normals:?}");
+        debug!("Input -v = {x0}");
+        debug!("Normals = {normals:?}");
     }
     search_direction
 }
