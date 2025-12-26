@@ -3,7 +3,7 @@ use bevy::log::debug;
 use crate::prelude::*;
 
 /// Needed to improve stability when `n.dot(dir)` happens to be very close to zero.
-const DOT_EPSILON: Scalar = 0.005;
+const DOT_EPSILON: Scalar = 1e-6;
 
 /// Projects input velocity `v` onto the planes defined by the given `normals`.
 /// This ensures that `velocity` does not point into any of the planes, but along them.
