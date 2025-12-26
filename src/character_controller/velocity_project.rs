@@ -217,3 +217,91 @@ impl SimplicialCone {
         }
     }
 }
+
+#[cfg(all(test, feature = "3d"))]
+mod test {
+    use crate::math::{Dir, PI, Vector};
+
+    #[test]
+    fn check_agreement() {
+        let normals = &[
+            Dir::Z,
+            Dir::from_xyz(2.0, 0.0, 1.0).unwrap(),
+            Dir::from_xyz(-2.0, 0.0, 1.0).unwrap(),
+            Dir::from_xyz(0.0, 2.0, 1.0).unwrap(),
+            Dir::from_xyz(0.0, -2.0, 1.0).unwrap(),
+            Dir::from_xyz(1.5, 1.5, 1.0).unwrap(),
+            Dir::from_xyz(1.5, -1.5, 1.0).unwrap(),
+            Dir::from_xyz(-1.5, 1.5, 1.0).unwrap(),
+            Dir::from_xyz(-1.5, -1.5, 1.0).unwrap(),
+            Dir::from_xyz(1.0, 1.75, 1.0).unwrap(),
+            Dir::from_xyz(1.0, -1.75, 1.0).unwrap(),
+            Dir::from_xyz(-1.0, 1.75, 1.0).unwrap(),
+            Dir::from_xyz(-1.0, -1.75, 1.0).unwrap(),
+            Dir::from_xyz(1.75, 1.0, 1.0).unwrap(),
+            Dir::from_xyz(1.75, -1.0, 1.0).unwrap(),
+            Dir::from_xyz(-1.75, 1.0, 1.0).unwrap(),
+            Dir::from_xyz(-1.75, -1.0, 1.0).unwrap(),
+        ];
+
+        for n in 1..=normals.len() {
+            let velocities = QuasiRandomDirection::default();
+            let mut worst_result = (0.0, Vector::ZERO, Vector::ZERO, Vector::ZERO);
+            for vel in velocities.take(1000) {
+                let old_result = super::project_velocity_old(vel, &normals[..n]);
+                let new_result = super::project_velocity_new(vel, &normals[..n]);
+                let badness = (old_result - new_result).length_squared();
+                if badness > worst_result.0 {
+                    worst_result = (badness, vel, old_result, new_result);
+                }
+            }
+            let (error, input, old_result, new_result) = worst_result;
+            eprintln!(
+                "For {n} normals, worst disagreement is {} between {} and {} from input {}",
+                error.sqrt(),
+                old_result,
+                new_result,
+                input
+            );
+            // eprintln!("Old: {}", (old_result - input).length());
+            // for (k, norm) in normals[..n].iter().enumerate() {
+            //     eprintln!(" β_{k} = {}", norm.dot(old_result));
+            // }
+            // eprintln!("New: {}", (new_result - input).length());
+            // for (k, norm) in normals[..n].iter().enumerate() {
+            //     eprintln!(" β_{k} = {}", norm.dot(new_result));
+            // }
+            // let _ = project_velocity_new(input, &normals[..n], true);
+        }
+    }
+
+    #[derive(Default)]
+    struct QuasiRandomDirection {
+        i: f32,
+        j: f32,
+    }
+
+    const PLASTIC: f32 = 1.32471795724475;
+    const INV_PLASTIC: f32 = 1.0 / PLASTIC;
+    const INV_PLASTIC_SQ: f32 = INV_PLASTIC * INV_PLASTIC;
+
+    impl QuasiRandomDirection {
+        pub fn reset(&mut self) {
+            *self = Self::default()
+        }
+    }
+    impl Iterator for QuasiRandomDirection {
+        type Item = Vector;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let z = 2.0 * self.i - 1.0;
+            let rho = (1.0 - z * z).sqrt();
+            let phi = 2.0 * PI * self.j;
+            let x = rho * phi.cos();
+            let y = rho * phi.sin();
+            self.i = (self.i + INV_PLASTIC) % 1.0;
+            self.j = (self.j + INV_PLASTIC_SQ) % 1.0;
+            Some(Vector::new(x, y, z))
+        }
+    }
+}
