@@ -192,21 +192,23 @@ impl SimplicialCone {
             #[cfg(feature = "3d")]
             SimplicialCone::Wedge(n1, n2) => {
                 let cross1 = n1.cross(*new_direction);
-                let cross1 = cross1 / cross1.length();
+                let c1sq = cross1.length_squared();
                 let d1 = x0.dot(cross1);
                 let inside1 = d1 <= 0.0;
 
                 let cross2 = new_direction.cross(*n2);
-                let cross2 = cross2 / cross2.length();
+                let c2sq = cross2.length_squared();
                 let d2 = x0.dot(cross2);
                 let inside2 = d2 <= 0.0;
 
                 if inside1 & inside2 {
                     (None, Vector::ZERO)
-                } else if d1 > d2 {
-                    (Some(Self::Wedge(n1, new_direction)), d1 * cross1)
+                } else if d1 * d1.abs() * c2sq > d2 * d2.abs() * c1sq {
+                    // the above is `if d1 / cross1.length() > d2 / cross2.length()`
+                    // but avoiding that couple of square roots
+                    (Some(Self::Wedge(n1, new_direction)), d1 * cross1 / c1sq)
                 } else {
-                    (Some(Self::Wedge(new_direction, n2)), d2 * cross2)
+                    (Some(Self::Wedge(new_direction, n2)), d2 * cross2 / c2sq)
                 }
             }
         }
