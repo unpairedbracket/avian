@@ -248,7 +248,7 @@ mod test {
                 let old_result = super::project_velocity_old(vel, &normals[..n]);
                 let new_result = super::project_velocity_new(vel, &normals[..n]);
                 let badness = (old_result - new_result).length_squared();
-                if badness > worst_result.0 {
+                if badness >= worst_result.0 {
                     worst_result = (badness, vel, old_result, new_result);
                 }
             }
