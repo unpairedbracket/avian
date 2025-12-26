@@ -302,3 +302,60 @@ mod test {
         }
     }
 }
+
+#[cfg(all(test, feature = "2d"))]
+mod test {
+    use crate::math::{Dir, PI, Vector};
+
+    const GOLDEN: f32 = 1.61803398875;
+    const INV_GOLDEN: f32 = 1.0 / GOLDEN;
+
+    #[test]
+    fn check_agreement() {
+        let normals = &[
+            Dir::Y,
+            Dir::from_xy(2.0, 1.0).unwrap(),
+            Dir::from_xy(-2.0, 1.0).unwrap(),
+            Dir::from_xy(1.0, 1.0).unwrap(),
+            Dir::from_xy(-1.0, 1.0).unwrap(),
+        ];
+
+        for n in 1..=normals.len() {
+            let velocities = QuasiRandomDirection::default();
+            let mut worst_result = (0.0, Vector::ZERO, Vector::ZERO, Vector::ZERO);
+            for vel in velocities.take(1000) {
+                let old_result = super::project_velocity_old(vel, &normals[..n]);
+                let new_result = super::project_velocity_new(vel, &normals[..n]);
+                let badness = (old_result - new_result).length_squared();
+                if badness >= worst_result.0 {
+                    worst_result = (badness, vel, old_result, new_result);
+                }
+            }
+            let (error, input, old_result, new_result) = worst_result;
+            eprintln!(
+                "For {n} normals, worst disagreement is {} between {} and {} from input {}",
+                error.sqrt(),
+                old_result,
+                new_result,
+                input
+            );
+        }
+    }
+
+    #[derive(Default)]
+    struct QuasiRandomDirection {
+        i: f32,
+    }
+
+    impl Iterator for QuasiRandomDirection {
+        type Item = Vector;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let phi = 2.0 * PI * self.i;
+            let x = phi.cos();
+            let y = phi.sin();
+            self.i = (self.i + INV_GOLDEN) % 1.0;
+            Some(Vector::new(x, y))
+        }
+    }
+}
