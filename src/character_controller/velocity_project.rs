@@ -111,6 +111,7 @@ pub fn project_velocity_new(v: Vector, normals: &[Dir]) -> Vector {
     -project_onto_conical_hull(-v, normals)
 }
 
+#[derive(Debug)]
 enum SimplicialCone {
     Origin,
     Ray(Dir),
@@ -189,29 +190,25 @@ impl SimplicialCone {
             #[cfg(feature = "3d")]
             SimplicialCone::Wedge(n1, n2) => {
                 let cross1 = new_direction.cross(*n1);
+                let cross1 = cross1 / cross1.length();
                 let alpha1 = x0.dot(cross1);
                 let gamma1 = n2.dot(cross1);
                 let d1 = -alpha1 * gamma1.signum();
-                let inside1 = d1 <= DOT_EPSILON;
+                let inside1 = d1 <= 0.0;
 
                 let cross2 = new_direction.cross(*n2);
+                let cross2 = cross2 / cross2.length();
                 let alpha2 = x0.dot(cross2);
                 let gamma2 = n1.dot(cross2);
                 let d2 = -alpha2 * gamma2.signum();
-                let inside2 = d2 <= DOT_EPSILON;
+                let inside2 = d2 <= 0.0;
 
                 if inside1 & inside2 {
                     (None, Vector::ZERO)
                 } else if d1 > d2 {
-                    (
-                        Some(Self::Wedge(n1, new_direction)),
-                        alpha1 * cross1 / cross1.length_squared(),
-                    )
+                    (Some(Self::Wedge(n1, new_direction)), alpha1 * cross1)
                 } else {
-                    (
-                        Some(Self::Wedge(n2, new_direction)),
-                        alpha2 * cross2 / cross2.length_squared(),
-                    )
+                    (Some(Self::Wedge(n2, new_direction)), alpha2 * cross2)
                 }
             }
         }
