@@ -181,34 +181,32 @@ impl SimplicialCone {
                 let cross = new_direction.cross(*previous_direction);
                 let alpha = x0.dot(cross);
                 let new_search_vector = alpha * cross / cross.length_squared();
+                let new_cone = if alpha > 0.0 {
+                    Self::Wedge(new_direction, previous_direction)
+                } else {
+                    Self::Wedge(previous_direction, new_direction)
+                };
 
-                (
-                    Some(Self::Wedge(previous_direction, new_direction)),
-                    new_search_vector,
-                )
+                (Some(new_cone), new_search_vector)
             }
             #[cfg(feature = "3d")]
             SimplicialCone::Wedge(n1, n2) => {
-                let cross1 = new_direction.cross(*n1);
+                let cross1 = n1.cross(*new_direction);
                 let cross1 = cross1 / cross1.length();
-                let alpha1 = x0.dot(cross1);
-                let gamma1 = n2.dot(cross1);
-                let d1 = -alpha1 * gamma1.signum();
+                let d1 = x0.dot(cross1);
                 let inside1 = d1 <= 0.0;
 
                 let cross2 = new_direction.cross(*n2);
                 let cross2 = cross2 / cross2.length();
-                let alpha2 = x0.dot(cross2);
-                let gamma2 = n1.dot(cross2);
-                let d2 = -alpha2 * gamma2.signum();
+                let d2 = x0.dot(cross2);
                 let inside2 = d2 <= 0.0;
 
                 if inside1 & inside2 {
                     (None, Vector::ZERO)
                 } else if d1 > d2 {
-                    (Some(Self::Wedge(n1, new_direction)), alpha1 * cross1)
+                    (Some(Self::Wedge(n1, new_direction)), d1 * cross1)
                 } else {
-                    (Some(Self::Wedge(n2, new_direction)), alpha2 * cross2)
+                    (Some(Self::Wedge(new_direction, n2)), d2 * cross2)
                 }
             }
         }
