@@ -2,10 +2,9 @@
 //!
 //! See the documentation of [`MoveAndSlide`] for more information.
 
-use crate::{
-    character_controller::velocity_project::project_velocity_new,
-    collision::collider::contact_query::contact_manifolds, prelude::*,
-};
+pub use super::velocity_project::{project_velocity_new, project_velocity_old};
+
+use crate::{collision::collider::contact_query::contact_manifolds, prelude::*};
 use bevy::{ecs::system::SystemParam, prelude::*};
 use core::time::Duration;
 

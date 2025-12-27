@@ -1,7 +1,7 @@
 //! Utilities for implementing character controllers.
 
 pub mod move_and_slide;
-pub mod velocity_project;
+mod velocity_project;
 
 /// Re-exports common types related to character controller functionality.
 pub mod prelude {
