@@ -2,7 +2,10 @@ use bevy_math::{Dir3, Vec3};
 use criterion::{BenchmarkId, Criterion, PlotConfiguration, criterion_group, criterion_main};
 use std::hint::black_box;
 
-use avian3d::{character_controller::velocity_project::*, math::PI};
+use avian3d::{
+    character_controller::move_and_slide::{project_velocity_new, project_velocity_old},
+    math::PI,
+};
 
 fn bench_velocity_projection(c: &mut Criterion) {
     let mut group = c.benchmark_group("Velocity Projection");
