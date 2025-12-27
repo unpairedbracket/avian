@@ -106,6 +106,11 @@ pub fn project_velocity_old(v: Vector, normals: &[Dir]) -> Vector {
     }
 }
 
+/// Projects input velocity `v` onto the planes defined by the given `normals`.
+/// This ensures that `velocity` does not point into any of the planes, but along them.
+///
+/// This is often used after [`MoveAndSlide::cast_move`] to ensure a character moved that way
+/// does not try to continue moving into colliding geometry.
 #[must_use]
 pub fn project_velocity_new(v: Vector, normals: &[Dir]) -> Vector {
     -project_onto_conical_hull(-v, normals)
