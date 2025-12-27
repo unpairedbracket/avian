@@ -1,6 +1,6 @@
 use bevy_math::{Dir3, Vec3};
+use core::hint::black_box;
 use criterion::{BenchmarkId, Criterion, PlotConfiguration, criterion_group, criterion_main};
-use std::hint::black_box;
 
 use avian3d::{
     character_controller::move_and_slide::{project_velocity_new, project_velocity_old},
@@ -64,6 +64,7 @@ struct QuasiRandomDirection {
     j: f32,
 }
 
+#[allow(clippy::excessive_precision)]
 const PLASTIC: f32 = 1.32471795724475;
 const INV_PLASTIC: f32 = 1.0 / PLASTIC;
 const INV_PLASTIC_SQ: f32 = INV_PLASTIC * INV_PLASTIC;

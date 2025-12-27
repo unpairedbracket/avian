@@ -294,6 +294,7 @@ mod test {
 
     #[cfg(feature = "3d")]
     impl QuasiRandomDirection {
+        #[allow(clippy::excessive_precision)]
         const PLASTIC: Scalar = 1.32471795724475;
         const INV_PLASTIC: Scalar = 1.0 / Self::PLASTIC;
         const INV_PLASTIC_SQ: Scalar = Self::INV_PLASTIC * Self::INV_PLASTIC;
@@ -301,6 +302,7 @@ mod test {
 
     #[cfg(feature = "2d")]
     impl QuasiRandomDirection {
+        #[allow(clippy::excessive_precision)]
         const GOLDEN: Scalar = 1.61803398875;
         const INV_GOLDEN: Scalar = 1.0 / Self::GOLDEN;
     }
@@ -318,12 +320,12 @@ mod test {
                 let rho = (1.0 - z * z).sqrt();
                 self.i = (self.i + Self::INV_PLASTIC) % 1.0;
                 self.j = (self.j + Self::INV_PLASTIC_SQ) % 1.0;
-                return Some(Vector::new(rho * x, rho * y, z));
+                Some(Vector::new(rho * x, rho * y, z))
             }
             #[cfg(feature = "2d")]
             {
                 self.j = (self.j + Self::INV_GOLDEN) % 1.0;
-                return Some(Vector::new(x, y));
+                Some(Vector::new(x, y))
             }
         }
     }
