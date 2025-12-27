@@ -119,7 +119,7 @@ pub fn project_velocity_new(v: Vector, normals: &[Dir]) -> Vector {
 #[derive(Debug)]
 enum SimplicialCone {
     Origin,
-    Ray(Dir),
+    Ray(#[cfg(feature = "3d")] Dir),
     #[cfg(feature = "3d")]
     Wedge(Dir, Dir),
 }
@@ -140,7 +140,9 @@ fn project_onto_conical_hull(x0: Vector, normals: &[Dir]) -> Vector {
             break;
         }
 
-        let betas = normals.iter().map(|n| n.dot(search_direction));
+        let betas = normals
+            .iter()
+            .map(|n| n.adjust_precision().dot(search_direction));
 
         let Some((best_idx, best_beta)) = betas
             .enumerate()
@@ -174,16 +176,21 @@ fn project_onto_conical_hull(x0: Vector, normals: &[Dir]) -> Vector {
 
 impl SimplicialCone {
     fn project_point(self, x0: Vector, new_direction: Dir) -> (Option<SimplicialCone>, Vector) {
+        let new_direction_vec = new_direction.adjust_precision();
         match self {
             SimplicialCone::Origin => {
-                let alpha = new_direction.dot(x0);
-                (Some(Self::Ray(new_direction)), x0 - alpha * new_direction)
+                let alpha = new_direction_vec.dot(x0);
+                #[cfg(feature = "2d")]
+                let ray = Self::Ray();
+                #[cfg(feature = "3d")]
+                let ray = Self::Ray(new_direction);
+                (Some(ray), x0 - alpha * new_direction_vec)
             }
             #[cfg(feature = "2d")]
-            SimplicialCone::Ray(_) => (None, Vector::ZERO),
+            SimplicialCone::Ray() => (None, Vector::ZERO),
             #[cfg(feature = "3d")]
             SimplicialCone::Ray(previous_direction) => {
-                let cross = new_direction.cross(*previous_direction);
+                let cross = new_direction_vec.cross(previous_direction.adjust_precision());
                 let alpha = x0.dot(cross);
                 let new_search_vector = alpha * cross / cross.length_squared();
                 let new_cone = if alpha > 0.0 {
@@ -196,12 +203,12 @@ impl SimplicialCone {
             }
             #[cfg(feature = "3d")]
             SimplicialCone::Wedge(n1, n2) => {
-                let cross1 = n1.cross(*new_direction);
+                let cross1 = n1.adjust_precision().cross(new_direction_vec);
                 let c1sq = cross1.length_squared();
                 let d1 = x0.dot(cross1);
                 let inside1 = d1 <= 0.0;
 
-                let cross2 = new_direction.cross(*n2);
+                let cross2 = new_direction_vec.cross(n2.adjust_precision());
                 let c2sq = cross2.length_squared();
                 let d2 = x0.dot(cross2);
                 let inside2 = d2 <= 0.0;
@@ -222,7 +229,7 @@ impl SimplicialCone {
 
 #[cfg(test)]
 mod test {
-    use crate::math::{Dir, PI, Vector};
+    use crate::math::{Dir, PI, Scalar, Vector};
 
     #[test]
     fn check_agreement() {
@@ -281,21 +288,21 @@ mod test {
     #[derive(Default)]
     struct QuasiRandomDirection {
         #[cfg(feature = "3d")]
-        i: f32,
-        j: f32,
+        i: Scalar,
+        j: Scalar,
     }
 
     #[cfg(feature = "3d")]
     impl QuasiRandomDirection {
-        const PLASTIC: f32 = 1.32471795724475;
-        const INV_PLASTIC: f32 = 1.0 / Self::PLASTIC;
-        const INV_PLASTIC_SQ: f32 = Self::INV_PLASTIC * Self::INV_PLASTIC;
+        const PLASTIC: Scalar = 1.32471795724475;
+        const INV_PLASTIC: Scalar = 1.0 / Self::PLASTIC;
+        const INV_PLASTIC_SQ: Scalar = Self::INV_PLASTIC * Self::INV_PLASTIC;
     }
 
     #[cfg(feature = "2d")]
     impl QuasiRandomDirection {
-        const GOLDEN: f32 = 1.61803398875;
-        const INV_GOLDEN: f32 = 1.0 / Self::GOLDEN;
+        const GOLDEN: Scalar = 1.61803398875;
+        const INV_GOLDEN: Scalar = 1.0 / Self::GOLDEN;
     }
 
     impl Iterator for QuasiRandomDirection {
