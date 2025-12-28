@@ -11,7 +11,7 @@ const DOT_EPSILON: Scalar = 0.005;
 /// This is often used after [`MoveAndSlide::cast_move`] to ensure a character moved that way
 /// does not try to continue moving into colliding geometry.
 #[must_use]
-pub fn project_velocity_old(v: Vector, normals: &[Dir]) -> Vector {
+pub fn project_velocity_bruteforce(v: Vector, normals: &[Dir]) -> Vector {
     if normals.is_empty() {
         return v;
     }
@@ -112,7 +112,7 @@ pub fn project_velocity_old(v: Vector, normals: &[Dir]) -> Vector {
 /// This is often used after [`MoveAndSlide::cast_move`] to ensure a character moved that way
 /// does not try to continue moving into colliding geometry.
 #[must_use]
-pub fn project_velocity_new(v: Vector, normals: &[Dir]) -> Vector {
+pub fn project_velocity(v: Vector, normals: &[Dir]) -> Vector {
     -project_onto_conical_hull(-v, normals)
 }
 

@@ -2,7 +2,7 @@
 //!
 //! See the documentation of [`MoveAndSlide`] for more information.
 
-pub use super::velocity_project::{project_velocity_new, project_velocity_old};
+pub use super::velocity_project::{project_velocity, project_velocity_bruteforce};
 
 use crate::{collision::collider::contact_query::contact_manifolds, prelude::*};
 use bevy::{ecs::system::SystemParam, prelude::*};
@@ -1084,6 +1084,6 @@ impl<'w, 's> MoveAndSlide<'w, 's> {
     /// does not try to continue moving into colliding geometry.
     #[must_use]
     pub fn project_velocity(v: Vector, normals: &[Dir]) -> Vector {
-        project_velocity_new(v, normals)
+        project_velocity(v, normals)
     }
 }

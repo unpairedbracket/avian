@@ -3,7 +3,7 @@ use core::hint::black_box;
 use criterion::{BenchmarkId, Criterion, PlotConfiguration, criterion_group, criterion_main};
 
 use avian3d::{
-    character_controller::move_and_slide::{project_velocity_new, project_velocity_old},
+    character_controller::move_and_slide::{project_velocity, project_velocity_bruteforce},
     math::PI,
 };
 
@@ -38,7 +38,7 @@ fn bench_velocity_projection(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("old", n), &normals[..n], |b, norms| {
             b.iter_batched(
                 || velocities.next().unwrap(),
-                |v| project_velocity_old(black_box(v), black_box(norms)),
+                |v| project_velocity_bruteforce(black_box(v), black_box(norms)),
                 criterion::BatchSize::SmallInput,
             )
         });
@@ -46,7 +46,7 @@ fn bench_velocity_projection(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("new", n), &normals[..n], |b, norms| {
             b.iter_batched(
                 || velocities.next().unwrap(),
-                |v| project_velocity_new(black_box(v), black_box(norms)),
+                |v| project_velocity(black_box(v), black_box(norms)),
                 criterion::BatchSize::SmallInput,
             )
         });
