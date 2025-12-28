@@ -229,7 +229,8 @@ impl SimplicialCone {
 
 #[cfg(test)]
 mod test {
-    use crate::math::{Dir, PI, Scalar, Vector};
+    use super::DOT_EPSILON;
+    use crate::prelude::*;
 
     #[test]
     fn check_agreement() {
@@ -264,23 +265,39 @@ mod test {
         ];
 
         for n in 1..=normals.len() {
+            let selected_normals = &normals[..n];
             let velocities = QuasiRandomDirection::default();
-            let mut worst_result = (0.0, Vector::ZERO, Vector::ZERO, Vector::ZERO);
+            let mut worst_result = (Scalar::NEG_INFINITY, Vector::ZERO);
             for vel in velocities.take(1000) {
-                let old_result = super::project_velocity_old(vel, &normals[..n]);
-                let new_result = super::project_velocity_new(vel, &normals[..n]);
-                let badness = (old_result - new_result).length_squared();
-                if badness >= worst_result.0 {
-                    worst_result = (badness, vel, old_result, new_result);
+                let new_result = super::project_velocity_new(vel, selected_normals);
+                for (k, normal) in selected_normals.iter().enumerate() {
+                    let intrusion = -new_result.dot(normal.adjust_precision());
+                    assert!(
+                        intrusion <= DOT_EPSILON,
+                        "velocity still points into constraint plane after projection: \
+                        input {vel} against {n} normals has intrusion \
+                        {intrusion} against normal {k}"
+                    );
+                }
+                let old_result = super::project_velocity_old(vel, selected_normals);
+
+                // Measure of quality of output: we're trying to minimise |output - input|
+                // How much worse than the brute-force method do we do?
+                let amount_worse = (new_result - vel).length() - (old_result - vel).length();
+                assert!(
+                    amount_worse <= DOT_EPSILON,
+                    "velocity projection result was {amount_worse} > {DOT_EPSILON} worse than \
+                    result from brute-force method when projecting input {vel} against {n} normals"
+                );
+
+                if amount_worse >= worst_result.0 {
+                    worst_result = (amount_worse, vel);
                 }
             }
-            let (error, input, old_result, new_result) = worst_result;
+            let (worst_error, bad_input) = worst_result;
+
             eprintln!(
-                "For {n} normals, worst disagreement is {} between {} and {} from input {}",
-                error.sqrt(),
-                old_result,
-                new_result,
-                input
+                "For {n} normals, worst case new method is {worst_error} worse than brute-force for input {bad_input}",
             );
         }
     }
