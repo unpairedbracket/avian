@@ -2,7 +2,7 @@
 //!
 //! See the documentation of [`MoveAndSlide`] for more information.
 
-pub use super::velocity_project::{project_velocity, project_velocity_bruteforce};
+pub use super::velocity_project::*;
 
 use crate::{collision::collider::contact_query::contact_manifolds, prelude::*};
 use bevy::{ecs::system::SystemParam, prelude::*};

@@ -215,5 +215,5 @@ required-features = ["3d", "debug-plugin"]
 
 [[bench]]
 name = "velocity_projection"
-required-features = ["3d", "default-collider"]
+required-features = ["3d", "default-collider", "test"]
 harness = false

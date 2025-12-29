@@ -323,7 +323,15 @@ impl SimplicialCone {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
+    //! Tests for velocity projection, notably the [`QuasiRandomDirection`] type
+    //! used in testing and benchmarking functions on uniformly distributed
+    //! input directions
+    //!
+    //! This is used because the velocity projection edge cases (both in terms
+    //! of correctness and performance) may show up for relatively small subsets
+    //! of input directions
+
     use super::DOT_EPSILON;
     use crate::prelude::*;
 
@@ -397,8 +405,14 @@ mod test {
         }
     }
 
+    /// Iterator that produces a fixed sequence of unit vectors,
+    /// uniformly distributed around the unit sphere.
+    ///
+    /// The produced sequence of directions is open, meaning it
+    /// continues indefinitely without repeating, at least up to
+    /// the limits of floating-point precision.
     #[derive(Default)]
-    struct QuasiRandomDirection {
+    pub struct QuasiRandomDirection {
         #[cfg(feature = "3d")]
         i: Scalar,
         j: Scalar,
@@ -417,6 +431,16 @@ mod test {
         #[allow(clippy::excessive_precision)]
         const GOLDEN: Scalar = 1.61803398875;
         const INV_GOLDEN: Scalar = 1.0 / Self::GOLDEN;
+    }
+
+    impl QuasiRandomDirection {
+        /// Reset the internal state of the direction generator
+        /// Directions returned by [`Self::next()`] after this
+        /// method is called will match the sequence produced
+        /// by a new instance
+        pub fn reset(&mut self) {
+            *self = Self::default();
+        }
     }
 
     impl Iterator for QuasiRandomDirection {

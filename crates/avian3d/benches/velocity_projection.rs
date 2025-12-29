@@ -3,7 +3,9 @@ use core::hint::black_box;
 use criterion::{BenchmarkId, Criterion, PlotConfiguration, criterion_group, criterion_main};
 
 use avian3d::{
-    character_controller::move_and_slide::{project_velocity, project_velocity_bruteforce},
+    character_controller::move_and_slide::{
+        project_velocity, project_velocity_bruteforce, test::QuasiRandomDirection,
+    },
     math::PI,
 };
 
@@ -57,34 +59,3 @@ fn bench_velocity_projection(c: &mut Criterion) {
 
 criterion_group!(benches, bench_velocity_projection);
 criterion_main!(benches);
-
-#[derive(Default)]
-struct QuasiRandomDirection {
-    i: f32,
-    j: f32,
-}
-
-#[allow(clippy::excessive_precision)]
-const PLASTIC: f32 = 1.32471795724475;
-const INV_PLASTIC: f32 = 1.0 / PLASTIC;
-const INV_PLASTIC_SQ: f32 = INV_PLASTIC * INV_PLASTIC;
-
-impl QuasiRandomDirection {
-    pub fn reset(&mut self) {
-        *self = Self::default()
-    }
-}
-impl Iterator for QuasiRandomDirection {
-    type Item = Vec3;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let z = 2.0 * self.i - 1.0;
-        let rho = (1.0 - z * z).sqrt();
-        let phi = 2.0 * PI * self.j;
-        let x = rho * phi.cos();
-        let y = rho * phi.sin();
-        self.i = (self.i + INV_PLASTIC) % 1.0;
-        self.j = (self.j + INV_PLASTIC_SQ) % 1.0;
-        Some(Vec3::new(x, y, z))
-    }
-}
