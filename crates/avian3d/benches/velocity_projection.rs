@@ -32,20 +32,24 @@ fn bench_velocity_projection(c: &mut Criterion) {
     ];
 
     // Performance is not the same for every input velocity,
-    // so ensure we're sampling the sphere evenly
+    // so ensure we're sampling the sphere evenly.
     let mut velocities = QuasiRandomDirection::default();
 
     for n in 1..=normals.len() {
         velocities.reset();
-        group.bench_with_input(BenchmarkId::new("old", n), &normals[..n], |b, norms| {
-            b.iter_batched(
-                || velocities.next().unwrap(),
-                |v| project_velocity_bruteforce(black_box(v), black_box(norms)),
-                criterion::BatchSize::SmallInput,
-            )
-        });
+        group.bench_with_input(
+            BenchmarkId::new("brute-force", n),
+            &normals[..n],
+            |b, norms| {
+                b.iter_batched(
+                    || velocities.next().unwrap(),
+                    |v| project_velocity_bruteforce(black_box(v), black_box(norms)),
+                    criterion::BatchSize::SmallInput,
+                )
+            },
+        );
         velocities.reset();
-        group.bench_with_input(BenchmarkId::new("new", n), &normals[..n], |b, norms| {
+        group.bench_with_input(BenchmarkId::new("gjk", n), &normals[..n], |b, norms| {
             b.iter_batched(
                 || velocities.next().unwrap(),
                 |v| project_velocity(black_box(v), black_box(norms)),
