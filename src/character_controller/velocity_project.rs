@@ -228,7 +228,7 @@ impl SimplicialCone {
     fn project_point(self, x0: Vector, new_direction: Dir) -> (Option<SimplicialCone>, Vector) {
         // See https://benspiers.co.uk/Games/Velocity-Projection
 
-        let new_direction_vec = *new_direction;
+        let new_direction_vec = new_direction.adjust_precision();
 
         match self {
             SimplicialCone::Origin => {
